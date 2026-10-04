@@ -205,6 +205,11 @@ struct ConfigBuilder {
                     throw ConfigError("\(location) hd.config hypr_key: expected \"caps_lock\", \"f18\" or \"none\"")
                 }
                 config.hyprKey = mode
+            case "border_radius":
+                guard let radius = value.double, radius >= 0 else {
+                    throw ConfigError("\(location) hd.config border_radius: expected a number >= 0")
+                }
+                config.borderRadius = radius
             case "unmanaged_apps":
                 guard let list = value.tableValue, list.fields.isEmpty,
                       list.array.allSatisfy({ $0.text != nil }) else {

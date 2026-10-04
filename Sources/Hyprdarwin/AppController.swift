@@ -19,6 +19,7 @@ final class AppController {
     private let menu = MenuBarController()
     private let banner = ErrorBanner()
     private let messagesWindow = MessagesWindow()
+    private let borders = BorderController()
 
     /// Every model event, in Hyprland's `EVENT>>DATA` vocabulary.
     var onEvent: ((WMEvent) -> Void)?
@@ -130,6 +131,7 @@ final class AppController {
                 Exec.run(command, environment: activeConfig.environment)
             }
         }
+        borders.hideAll()
         if managing && !paused { revealParkedWindows() }
         if capsRemapped { KeyRemapper.remove() }
         input.stop()
@@ -272,7 +274,9 @@ final class AppController {
             case .kill(let pid):
                 NSRunningApplication(processIdentifier: pid)?.forceTerminate()
             case .focus(let id):
-                guard let pid = model.windows[id]?.info.pid else { continue }
+                guard let window = model.windows[id] else { continue }
+                let pid = window.info.pid
+                Log.info("focusing window \(id) (\(window.info.bundleID))")
                 lastOSFocus = id
                 source.focus(pid: pid, id: id)
             case .warpCursor(let point):
@@ -299,12 +303,24 @@ final class AppController {
         case let .windows(pid, infos, initial):
             let previous = known[pid] ?? []
             let current = Set(infos.map(\.id))
-            for id in previous.subtracting(current) {
+            var gone = previous.subtracting(current).filter { model.windows[$0] != nil }
+            for info in infos where !previous.contains(info.id) && model.windows[info.id] == nil {
+                // switching native tabs swaps one tab window for another at the
+                // same frame: keep its place instead of closing and reopening
+                guard let old = gone.first(where: { model.windows[$0]?.info.frame.isClose(to: info.frame, tolerance: 4) == true }) else { continue }
+                gone.remove(old)
+                model.replaceWindow(old, with: info)
+                openedAt[old] = nil
+                Log.info("window \(old) became \(info.id) (tab switch): \(info.bundleID) \"\(info.title)\"")
+            }
+            for id in previous.subtracting(current) where model.windows[id] != nil {
                 perform(model.removeWindow(id))
             }
             for info in infos {
                 if previous.contains(info.id) || model.windows[info.id] != nil {
                     model.updateInfo(info)
+                } else if activeConfig.unmanagedApps.contains(info.bundleID) {
+                    continue
                 } else {
                     Log.info("window \(info.id) \(initial ? "found" : "opened"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
                     if !initial { openedAt[info.id] = Date() }
@@ -319,7 +335,8 @@ final class AppController {
             perform(model.removeWindow(id))
         case let .frame(id, frame):
             applier.observed(id, frame: frame, model: model)
-            if model.windows[id]?.isFloating == false { model.windowFrameChanged(id, frame: frame) }
+            model.windowFrameChanged(id, frame: frame)
+            updateBorders()
             return
         case let .title(id, title):
             guard var info = model.windows[id]?.info else { return }
@@ -331,6 +348,7 @@ final class AppController {
             // our own write read back: the real frame, never a user move
             for (id, frame) in results { model.windowFrameChanged(id, frame: frame) }
             applier.applied(results)
+            updateBorders()
             return
         }
         refresh()
@@ -381,6 +399,7 @@ final class AppController {
         guard managing else { return }
         lastPlan = model.computePlan()
         if !paused { applier.apply(lastPlan, model: model) }
+        updateBorders()
         for event in model.drainEvents() {
             Log.debug("event \(event.line)")
             switch event {
@@ -400,6 +419,17 @@ final class AppController {
             onEvent?(event)
         }
         updateMenu()
+    }
+
+    /// The focused window gets the active border only while it really has
+    /// the keyboard (not while an unmanaged app or hyprdarwin itself has it).
+    private func updateBorders() {
+        guard managing, !paused else {
+            borders.hideAll()
+            return
+        }
+        let active = model.focusedWindow.flatMap { $0 == lastOSFocus ? $0 : nil }
+        borders.update(model: model, plan: lastPlan, activeWindow: active)
     }
 
     // MARK: - Pause, Caps Lock, menu

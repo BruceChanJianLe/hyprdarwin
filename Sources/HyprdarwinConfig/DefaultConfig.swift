@@ -27,6 +27,13 @@ hl.config({
         layout   = "dwindle", -- "dwindle" or "master"; per workspace via hl.workspace_rule
         gaps_in  = 5,         -- between windows (each side), or "top right bottom left"
         gaps_out = 12,        -- around the screen edge
+
+        border_size = 2,      -- 0 hides the borders
+        col = {
+            active_border   = "rgba(33ccffee)", -- focused window: cyan
+            inactive_border = "rgba(9b5de5aa)", -- other windows: purple
+            -- gradients work too: { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }
+        },
     },
 
     dwindle = {
@@ -61,6 +68,7 @@ if hd then
     hd.config({
         hypr_key    = "caps_lock",    -- "caps_lock", "f18" (already remapped elsewhere) or "none"
         hide_corner = "bottom-right", -- where hidden workspaces' windows are parked
+        border_radius = 12,           -- corner radius of the borders, to match macOS windows
         -- unmanaged_apps = { "com.mitchellh.ghostty" }, -- bundle ids hyprdarwin never moves
     })
 end

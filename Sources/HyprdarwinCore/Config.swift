@@ -114,7 +114,11 @@ public struct Config: Sendable {
     public var gapsOut = Insets(all: 20)
     public var borderSize = 2
     public var activeBorder = BorderColor(colors: [Color(red: 0.2, green: 0.8, blue: 1, alpha: 0.93)])
-    public var inactiveBorder = BorderColor(colors: [Color(red: 0.35, green: 0.35, blue: 0.35, alpha: 0.67)])
+    /// Purple, rgba(9b5de5aa).
+    public var inactiveBorder = BorderColor(colors: [Color(red: 0x9b / 255, green: 0x5d / 255, blue: 0xe5 / 255, alpha: 0xaa / 255)])
+    /// hd.config border_radius: corner radius of the border (macOS draws the
+    /// windows' own corners, so match them).
+    public var borderRadius = 12.0
     public var layoutOptions = LayoutOptions()
     /// 0: focus only changes on click or keyboard; 1: focus follows the cursor.
     public var followMouse = 1

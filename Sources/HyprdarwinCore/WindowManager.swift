@@ -382,6 +382,22 @@ public final class WindowManager {
         }
     }
 
+    /// The same window under a new id: switching native macOS tabs swaps
+    /// which tab window exists. The new id takes the old one's place,
+    /// workspace and focus. False when `old` is unknown or `info.id` taken.
+    @discardableResult
+    public func replaceWindow(_ old: WindowID, with info: WindowInfo) -> Bool {
+        guard var window = windows[old], windows[info.id] == nil else { return false }
+        windows[old] = nil
+        window.info = info
+        windows[info.id] = window
+        workspaces[window.workspace]?.layout.replace(old, with: info.id)
+        if workspaces[window.workspace]?.lastFocused == old { workspaces[window.workspace]?.lastFocused = info.id }
+        focusHistory = focusHistory.map { $0 == old ? info.id : $0 }
+        if focusedWindow == old { focusedWindow = info.id }
+        return true
+    }
+
     /// The source no longer sees the window (closed, minimized, app quit).
     @discardableResult
     public func removeWindow(_ id: WindowID) -> [Effect] {

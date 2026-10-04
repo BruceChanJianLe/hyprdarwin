@@ -516,4 +516,19 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.layoutPreview(for: .numbered(1))[2] == CGRect(x: 500, y: 25, width: 500, height: 775))
         if case .hidden = manager.computePlan().placements[2] {} else { Issue.record("workspace 1 is hidden") }
     }
+
+    @Test func tabSwitchReplacesTheWindowInPlace() {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.addWindow(info(3), isNew: true)
+        let before = manager.computePlan().frame(of: 2)
+        manager.externalFocus(2)
+        #expect(manager.replaceWindow(2, with: info(9, title: "Tab 2")))
+        #expect(manager.windows[2] == nil)
+        #expect(manager.computePlan().frame(of: 9) == before)
+        #expect(manager.focusedWindow == 9)
+        #expect(!manager.replaceWindow(42, with: info(10)))
+        #expect(!manager.replaceWindow(1, with: info(3)), "the new id is already managed")
+    }
 }

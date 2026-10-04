@@ -54,7 +54,10 @@ enum WindowStack {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
             return nil
         }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
         for entry in list {
+            // hyprdarwin's own border panels are not windows to focus
+            if (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == ownPID { continue }
             guard let boundsDict = entry[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDict), bounds.contains(point) else { continue }
             if let alpha = entry[kCGWindowAlpha as String] as? Double, alpha < 0.01 { continue }
