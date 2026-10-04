@@ -31,7 +31,7 @@ extension Array where Element == Monitor {
         var best: (Monitor, Double)?
         for monitor in self {
             let overlap = monitor.frame.intersection(rect)
-            let area = overlap.isNull ? 0 : overlap.width * overlap.height
+            let area = overlap.isNull ? 0 : Double(overlap.width * overlap.height)
             if area > (best?.1 ?? 0) { best = (monitor, area) }
         }
         if let best { return best.0 }

@@ -112,7 +112,7 @@ public enum Neighbor {
                 overlap = Swift.min(frame.maxX, origin.maxX) - Swift.max(frame.minX, origin.minX)
             }
             let overlaps = overlap > 0
-            let centre = hypot(frame.midX - origin.midX, frame.midY - origin.midY)
+            let centre = Double(hypot(frame.midX - origin.midX, frame.midY - origin.midY))
             if let current = best {
                 if current.overlaps != overlaps {
                     if overlaps { best = (candidate.id, overlaps, distance, centre) }
