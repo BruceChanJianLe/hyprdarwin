@@ -44,8 +44,12 @@ final class ConfigWatcher {
         )
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagUseCFTypes)
         // a symlinked config (dotfiles) is edited where the link points
-        let resolved = ((path as NSString).resolvingSymlinksInPath as NSString).deletingLastPathComponent
-        let directories = Array(Set([directory, (directory as NSString).resolvingSymlinksInPath, resolved]))
+        func real(_ path: String) -> String {
+            guard let resolved = realpath(path, nil) else { return path }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+        let directories = Array(Set([real(directory), (real(path) as NSString).deletingLastPathComponent]))
         guard let created = FSEventStreamCreate(
             nil, configWatcherCallback, &context, directories as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.05, flags
