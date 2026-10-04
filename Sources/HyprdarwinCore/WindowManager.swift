@@ -480,7 +480,7 @@ public final class WindowManager {
             if let previousWindow = previous.window, let workspace = windows[previousWindow]?.workspace, isVisible(workspace) {
                 return focus(previousWindow, warp: false)
             }
-            return [.activate(pid: previous.pid)]
+            return [.activate(pid: previous.pid, window: previous.window)]
         }
         var effects: [Effect] = []
         // focusing a window a fullscreen one hides brings the workspace back

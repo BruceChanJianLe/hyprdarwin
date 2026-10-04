@@ -293,12 +293,12 @@ final class AppController {
                 Log.info("focusing window \(id) (\(window.info.bundleID))")
                 lastOSFocus = id
                 source.focus(pid: pid, id: id)
-            case .activate(let pid):
-                Log.info("giving the keyboard back to pid \(pid)")
-                lastOSFocus = nil
+            case let .activate(pid, window):
+                Log.info("giving the keyboard back to pid \(pid) window \(window.map(String.init) ?? "-")")
+                lastOSFocus = window
                 if pid == ProcessInfo.processInfo.processIdentifier {
                     NSApp.activate()
-                } else {
+                } else if window.map({ SkyLight.makeKeyWindow(pid: pid, windowID: $0) }) != true {
                     NSRunningApplication(processIdentifier: pid)?.activate()
                 }
             case .warpCursor(let point):

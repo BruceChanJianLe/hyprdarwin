@@ -8,8 +8,9 @@ public enum Effect: Equatable, Sendable {
     case kill(pid: Int32)
     /// Give the window OS keyboard focus and raise it.
     case focus(WindowID)
-    /// Activate the app (it keys its own window), managed or not.
-    case activate(pid: Int32)
+    /// Give the keyboard back to an app, managed or not: its `window` when
+    /// known, else whichever window the app keys itself. Raises nothing else.
+    case activate(pid: Int32, window: WindowID?)
     case warpCursor(CGPoint)
     /// The active submap changed ("" is the global map).
     case submap(String)

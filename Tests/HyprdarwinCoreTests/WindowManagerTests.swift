@@ -492,7 +492,7 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         // the keyboard was on an unmanaged app (Ghostty), not on the model's last focused window
         manager.addWindow(info(3, title: "Mail - Drafts"), isNew: true)
         let ghostty = KeyboardOwner(pid: 999, window: 50)
-        #expect(manager.externalFocus(3, justOpened: true, previousOwner: ghostty) == [.activate(pid: 999)],
+        #expect(manager.externalFocus(3, justOpened: true, previousOwner: ghostty) == [.activate(pid: 999, window: 50)],
                 "Ghostty gets it back, not window 1")
         #expect(manager.focusedWindow == 1)
         #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1))
