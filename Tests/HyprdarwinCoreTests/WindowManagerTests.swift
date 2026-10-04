@@ -368,4 +368,50 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(WMEvent.openWindow(255, workspace: .numbered(1), bundleID: "com.a", title: "T").line == "openwindow>>ff,1,com.a,T")
         #expect(WMEvent.activeSpecial("scratch", monitorName: "DELL").line == "activespecial>>special:scratch,DELL")
     }
+
+    @Test func pointerHelpers() {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.addWindow(info(3, resizable: false), isNew: true)
+        let plan = manager.computePlan()
+        #expect(manager.window(at: CGPoint(x: 200, y: 200), plan: plan) == 3, "floating windows sit on top")
+        #expect(manager.window(at: CGPoint(x: 50, y: 700), plan: plan) == 1)
+        #expect(manager.focusFromCursor(1) == [.focus(1)])
+        #expect(manager.focusFromCursor(1).isEmpty)
+        manager.swapWindows(1, 2)
+        #expect(manager.computePlan().frame(of: 1)?.minX == 500)
+        manager.swapWindows(1, 3)
+        #expect(manager.computePlan().frame(of: 1)?.minX == 500, "floating windows do not swap")
+    }
+
+    @Test func revealFramesBringParkedWindowsBack() {
+        let manager = makeManager(monitors: [primary, external])
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2, resizable: false), isNew: true)
+        manager.dispatch(.focusWorkspace(.id(.numbered(3)), onCurrentMonitor: false))
+        let frames = manager.revealFrames()
+        #expect(frames[1] == CGRect(x: 40, y: 65, width: 400, height: 300))
+        #expect(frames[2] == CGRect(x: 100, y: 100, width: 400, height: 300), "floating windows return to their own frame")
+    }
+
+    @Test func floatingMovesAndRuleToggles() throws {
+        let manager = makeManager { config in
+            config.windowRules = [try! rule { match, effects in
+                match.class = try RulePattern("app")
+                effects.borderSize = 7
+            }]
+        }
+        manager.addWindow(info(1, resizable: false), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.floatingWindowMoved(1, frame: CGRect(x: 10, y: 40, width: 300, height: 200))
+        manager.floatingWindowMoved(2, frame: CGRect(x: 10, y: 40, width: 300, height: 200))
+        #expect(manager.computePlan().frame(of: 1) == CGRect(x: 10, y: 40, width: 300, height: 200))
+        #expect(manager.computePlan().frame(of: 2) == CGRect(x: 0, y: 25, width: 1000, height: 775), "tiled windows ignore it")
+        manager.windowFrameChanged(2, frame: CGRect(x: 0, y: 0, width: 640, height: 480))
+        #expect(manager.windows[2]?.info.frame.size == CGSize(width: 640, height: 480))
+        #expect(manager.windows[2]?.borderSize == 7)
+        manager.setWindowRuleEnabled(0, false)
+        #expect(manager.windows[2]?.borderSize == nil)
+    }
 }

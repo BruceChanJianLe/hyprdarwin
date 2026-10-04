@@ -363,21 +363,8 @@ extension WindowManager {
     func swapInDirection(_ direction: Direction) -> [Effect] {
         guard let id = focusedWindow, let window = windows[id], !window.isFloating else { return [] }
         let plan = computePlan()
-        guard let other = tiledNeighbor(of: id, direction: direction, plan: plan), let otherWindow = windows[other] else {
-            return []
-        }
-        if otherWindow.workspace == window.workspace {
-            workspaces[window.workspace]?.layout.swap(id, other)
-        } else {
-            // across monitors: each takes the other's place
-            workspaces[window.workspace]?.layout.replace(id, with: other)
-            workspaces[otherWindow.workspace]?.layout.replace(other, with: id)
-            windows[id]?.workspace = otherWindow.workspace
-            windows[other]?.workspace = window.workspace
-            workspaces[window.workspace]?.lastFocused = other
-            emit(.moveWindow(id, workspace: otherWindow.workspace))
-            emit(.moveWindow(other, workspace: window.workspace))
-        }
+        guard let other = tiledNeighbor(of: id, direction: direction, plan: plan) else { return [] }
+        swapWindows(id, other)
         return focus(id, warp: true)
     }
 
@@ -431,5 +418,59 @@ extension WindowManager {
         }
         workspaces[window.workspace]?.layout.resize(id, dx: dx, dy: dy, area: area, options: config.layoutOptions)
         return []
+    }
+
+    // MARK: - Pointer and lifecycle helpers
+
+    /// Exchange two tiled windows' places, on one workspace or across two.
+    public func swapWindows(_ a: WindowID, _ b: WindowID) {
+        guard a != b, let first = windows[a], let second = windows[b], !first.isFloating, !second.isFloating else { return }
+        if first.workspace == second.workspace {
+            workspaces[first.workspace]?.layout.swap(a, b)
+            return
+        }
+        workspaces[first.workspace]?.layout.replace(a, with: b)
+        workspaces[second.workspace]?.layout.replace(b, with: a)
+        windows[a]?.workspace = second.workspace
+        windows[b]?.workspace = first.workspace
+        if workspaces[first.workspace]?.lastFocused == a { workspaces[first.workspace]?.lastFocused = b }
+        if workspaces[second.workspace]?.lastFocused == b { workspaces[second.workspace]?.lastFocused = a }
+        emit(.moveWindow(a, workspace: second.workspace))
+        emit(.moveWindow(b, workspace: first.workspace))
+    }
+
+    /// follow_mouse: the cursor entered a visible window.
+    public func focusFromCursor(_ id: WindowID) -> [Effect] {
+        guard config.followMouse == 1, focusedWindow != id, let window = windows[id], isVisible(window.workspace) else { return [] }
+        markFocused(id)
+        return [.focus(id)]
+    }
+
+    /// The visible window under `point`: floating and fullscreen windows
+    /// first (they sit on top), then tiles.
+    public func window(at point: CGPoint, plan: Plan) -> WindowID? {
+        let visible = visibleFrames(plan).filter { $0.frame.contains(point) }
+        let onTop = visible.filter { windows[$0.id].map { $0.isFloating || $0.fullscreen != nil } == true }
+        if let focused = focusedWindow, onTop.contains(where: { $0.id == focused }) { return focused }
+        return (onTop.first ?? visible.first)?.id
+    }
+
+    /// Frames that bring every parked window back on screen (pause and quit).
+    public func revealFrames() -> [WindowID: CGRect] {
+        let plan = computePlan()
+        var result: [WindowID: CGRect] = [:]
+        var cascade = 0.0
+        for window in windows.values.sorted(by: { $0.id < $1.id }) {
+            guard case .hidden? = plan.placements[window.id] else { continue }
+            let monitor = workspaces[window.workspace].flatMap { self.monitor(id: $0.monitorID) } ?? monitors.first
+            guard let area = monitor?.visibleFrame else { continue }
+            var frame = window.isFloating ? window.floatingFrame : CGRect(origin: .zero, size: window.info.frame.size)
+            if !window.isFloating || !area.intersects(frame) {
+                frame.origin = CGPoint(x: area.minX + 40 + cascade, y: area.minY + 40 + cascade)
+                cascade = (cascade + 30).truncatingRemainder(dividingBy: 300)
+            }
+            result[window.id] = clamp(frame, to: area).integral
+        }
+        return result
     }
 }

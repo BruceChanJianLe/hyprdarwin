@@ -396,15 +396,23 @@ public final class WindowManager {
         }
     }
 
-    /// The window's real frame as last read; floating windows keep it as
-    /// their home (the user moved or resized them).
+    /// The window's real frame as last read (its size is kept while parked).
     public func windowFrameChanged(_ id: WindowID, frame: CGRect) {
-        guard var window = windows[id] else { return }
-        window.info.frame = frame
-        if window.isFloating, window.fullscreen == nil, isVisible(window.workspace) {
-            window.floatingFrame = frame
-        }
-        windows[id] = window
+        windows[id]?.info.frame = frame
+    }
+
+    /// The user moved or resized a visible floating window: its new home.
+    public func floatingWindowMoved(_ id: WindowID, frame: CGRect) {
+        guard let window = windows[id], window.isFloating, window.fullscreen == nil, isVisible(window.workspace) else { return }
+        windows[id]?.floatingFrame = frame
+        windows[id]?.info.frame = frame
+    }
+
+    /// A rule handle's set_enabled() at runtime.
+    public func setWindowRuleEnabled(_ index: Int, _ enabled: Bool) {
+        guard config.windowRules.indices.contains(index) else { return }
+        config.windowRules[index].enabled = enabled
+        for id in windows.keys { applyDynamicRules(to: id) }
     }
 
     /// The OS moved keyboard focus (click, Cmd-Tab, app activation). A window
