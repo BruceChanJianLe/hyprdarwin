@@ -20,6 +20,8 @@ extension WindowManager {
         case let .fullscreen(mode, action):
             guard let id = focusedWindow, let window = windows[id] else { return [] }
             let on = action.apply(to: window.fullscreen == mode)
+            // one fullscreen window per workspace
+            if on { exitFullscreen(on: window.workspace) }
             windows[id]?.fullscreen = on ? mode : nil
             return [.focus(id)]
         case let .moveToWorkspace(selector, follow):

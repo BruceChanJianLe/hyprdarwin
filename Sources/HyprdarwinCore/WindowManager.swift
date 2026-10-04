@@ -361,8 +361,16 @@ public final class WindowManager {
         if !isVisible(window.workspace) {
             result += show(workspace: window.workspace)
         }
+        // a new focused window would open hidden behind a fullscreen one
+        if window.fullscreen == nil { exitFullscreen(on: window.workspace) }
         result += focus(info.id, warp: false)
         return result
+    }
+
+    func exitFullscreen(on workspace: WorkspaceID) {
+        for window in windows.values where window.workspace == workspace && window.fullscreen != nil {
+            windows[window.id]?.fullscreen = nil
+        }
     }
 
     /// The source no longer sees the window (closed, minimized, app quit).
@@ -425,6 +433,8 @@ public final class WindowManager {
     public func externalFocus(_ id: WindowID) -> [Effect] {
         guard let window = windows[id] else { return [] }
         var effects: [Effect] = []
+        // focusing a window a fullscreen one hides brings the workspace back
+        if window.fullscreen == nil { exitFullscreen(on: window.workspace) }
         if !isVisible(window.workspace) {
             effects += show(workspace: window.workspace)
         }
@@ -578,8 +588,13 @@ public final class WindowManager {
             let raw = workspace.layout.frames(in: area, options: config.layoutOptions)
             tiled.merge(Gaps.apply(raw, area: area, gapsIn: gapsIn(for: id))) { a, _ in a }
         }
+        // a fullscreen window hides the rest of its workspace: macOS gives no
+        // way to keep it above them (and translucent apps would show them)
+        var covered: Set<WorkspaceID> = []
+        for window in windows.values where window.fullscreen != nil { covered.insert(window.workspace) }
         for window in windows.values {
             guard isVisible(window.workspace),
+                  !(covered.contains(window.workspace) && window.fullscreen == nil),
                   let workspace = workspaces[window.workspace],
                   let monitor = monitor(id: workspace.monitorID) else {
                 plan.placements[window.id] = .hidden(parkingOrigin(for: window))

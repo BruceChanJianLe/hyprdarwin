@@ -297,6 +297,31 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.computePlan().frame(of: 2)?.width == 490)
     }
 
+    @Test func fullscreenParksTheRestOfItsWorkspace() {
+        let manager = makeManager { $0.gapsOut = Insets(all: 10) }
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.addWindow(info(3, resizable: false), isNew: true)
+        manager.externalFocus(2)
+        manager.dispatch(.fullscreen(.maximized, .set))
+        var plan = manager.computePlan()
+        #expect(plan.frame(of: 2) == primary.visibleFrame.inset(by: Insets(all: 10)))
+        #expect(plan.placements[1] == .hidden(CGPoint(x: 999, y: 799)))
+        #expect(plan.placements[3] == .hidden(CGPoint(x: 999, y: 799)), "floating windows too")
+
+        // focusing a hidden sibling (Cmd-Tab) leaves fullscreen
+        manager.externalFocus(1)
+        plan = manager.computePlan()
+        #expect(manager.windows[2]?.fullscreen == nil)
+        #expect(plan.frame(of: 1)?.width == 490)
+
+        // so does a new window opening on that workspace
+        manager.dispatch(.fullscreen(.fullscreen, .set))
+        manager.addWindow(info(4), isNew: true)
+        #expect(manager.windows[1]?.fullscreen == nil)
+        #expect(manager.computePlan().frame(of: 4) != nil)
+    }
+
     @Test func perWorkspaceLayoutAndConfigReload() {
         let manager = makeManager { config in
             var r = WorkspaceRule(workspace: .numbered(2))

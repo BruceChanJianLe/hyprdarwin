@@ -74,8 +74,10 @@ end
 hl.bind(mod .. " + RETURN", hl.dsp.exec_cmd(terminal),                 { description = "Terminal" })
 hl.bind(mod .. " + Q",      hl.dsp.window.close(),                     { description = "Close window" })
 hl.bind(mod .. " + V",      hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
-hl.bind(mod .. " + F",      hl.dsp.window.fullscreen(),                { description = "Toggle fullscreen" })
-hl.bind(mod .. " + SHIFT + F", hl.dsp.window.fullscreen({ mode = "maximized" }), { description = "Toggle maximized" })
+-- "maximized" fills the tiling area (inside gaps_out); "fullscreen" the whole screen below the menu bar.
+-- Either way the workspace's other windows step aside until it ends.
+hl.bind(mod .. " + F",         hl.dsp.window.fullscreen({ mode = "maximized" }), { description = "Toggle maximized" })
+hl.bind(mod .. " + SHIFT + F", hl.dsp.window.fullscreen(),                       { description = "Toggle fullscreen" })
 hl.bind(mod .. " + C",      hl.dsp.window.center(),                    { description = "Center floating window" })
 hl.bind(mod .. " + J",      hl.dsp.layout("togglesplit"),              { description = "Toggle split (dwindle)" })
 hl.bind(mod .. " + SHIFT + RETURN", hl.dsp.layout("swapwithmaster"),   { description = "Swap with master (master)" })

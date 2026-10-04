@@ -97,7 +97,7 @@ hl.workspace_rule({ workspace = "5", layout = "master" })
 hl.bind(mod .. " + RETURN", hl.dsp.exec_cmd("open -na Ghostty"), { description = "Terminal" })
 hl.bind(mod .. " + Q", hl.dsp.window.close())
 hl.bind(mod .. " + V", hl.dsp.window.float({ action = "toggle" }))
-hl.bind(mod .. " + F", hl.dsp.window.fullscreen())
+hl.bind(mod .. " + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
 hl.bind(mod .. " + J", hl.dsp.layout("togglesplit"))
 hl.bind(mod .. " + S", hl.dsp.workspace.toggle_special("scratch"))
 
@@ -177,7 +177,7 @@ Dispatchers (`hl.dsp.*`):
 | `exec_cmd(cmd)` | shell command |
 | `window.close()`, `window.kill()` | kill force-quits the app |
 | `window.float({ action })` | `toggle` (default), `set`, `unset` |
-| `window.fullscreen({ mode, action })` | `mode`: `fullscreen` (fills the screen below the menu bar) or `maximized` (inside gaps_out). Emulated; native macOS fullscreen is left alone |
+| `window.fullscreen({ mode, action })` | `mode`: `fullscreen` (fills the screen below the menu bar) or `maximized` (inside gaps_out). The workspace's other windows are parked until it ends (or you focus one of them, or a new window opens there). Emulated; native macOS fullscreen is left alone |
 | `window.move({ direction })` | swap with the neighbour, or move to the next monitor |
 | `window.move({ workspace, follow })` | `follow = false` is Hyprland's movetoworkspacesilent |
 | `window.move({ monitor, follow })`, `window.move({ x, y, relative })` | x/y moves floating windows |
