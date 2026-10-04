@@ -414,4 +414,14 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         manager.setWindowRuleEnabled(0, false)
         #expect(manager.windows[2]?.borderSize == nil)
     }
+
+    @Test func adoptedWindowsSpiralInsteadOfSplittingTheFirstTile() {
+        let manager = makeManager()
+        for id: WindowID in 1...4 { manager.addWindow(info(id), isNew: false) }
+        let plan = manager.computePlan()
+        #expect(plan.frame(of: 1) == CGRect(x: 0, y: 25, width: 500, height: 775))
+        #expect(plan.frame(of: 2)?.size == CGSize(width: 500, height: 388))
+        #expect(plan.frame(of: 3)?.size == CGSize(width: 250, height: 388))
+        #expect(plan.frame(of: 4)?.size == CGSize(width: 250, height: 388))
+    }
 }

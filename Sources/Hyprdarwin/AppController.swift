@@ -323,9 +323,8 @@ final class AppController {
         case let .focused(_, id):
             handleOSFocus(id)
         case .applied(let results):
-            for (id, frame) in results where model.windows[id]?.isFloating == false {
-                model.windowFrameChanged(id, frame: frame)
-            }
+            // our own write read back: the real frame, never a user move
+            for (id, frame) in results { model.windowFrameChanged(id, frame: frame) }
             applier.applied(results)
             return
         }

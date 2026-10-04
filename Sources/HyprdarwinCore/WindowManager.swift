@@ -340,7 +340,11 @@ public final class WindowManager {
 
         windows[info.id] = window
         if !window.isFloating, let area = tilingArea(for: window.workspace) {
-            let near = workspace.lastFocused ?? (focusedWindow.flatMap { windows[$0]?.workspace == window.workspace ? $0 : nil })
+            // a new window splits the focused one (Hyprland); windows found at
+            // startup split the previous one, giving dwindle's spiral
+            let near = isNew
+                ? workspace.lastFocused ?? (focusedWindow.flatMap { windows[$0]?.workspace == window.workspace ? $0 : nil })
+                : workspaces[window.workspace]?.layout.windows.last
             workspaces[window.workspace]?.layout.insert(info.id, focused: near, area: area, options: config.layoutOptions, cursor: cursor)
         }
         if workspaces[window.workspace]?.lastFocused == nil {

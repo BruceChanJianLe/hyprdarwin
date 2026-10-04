@@ -31,6 +31,7 @@ final class FrameApplier {
     private var lastWrite: [WindowID: Date] = [:]
     private var driftChecks: [WindowID: DispatchWorkItem] = [:]
     private var dragged: Set<WindowID> = []
+    private var lastObserved: [WindowID: CGRect] = [:]
 
     private static let settleTime: TimeInterval = 0.25
     private static let maxReasserts = 2
@@ -65,6 +66,7 @@ final class FrameApplier {
         }
         for id in targets.keys where plan.placements[id] == nil {
             targets[id] = nil
+            lastObserved[id] = nil
             lastWrite[id] = nil
             driftChecks.removeValue(forKey: id)?.cancel()
         }
@@ -81,6 +83,7 @@ final class FrameApplier {
         driftChecks.values.forEach { $0.cancel() }
         driftChecks.removeAll()
         dragged.removeAll()
+        lastObserved.removeAll()
     }
 
     /// Frames read back right after a write batch.
@@ -113,13 +116,24 @@ final class FrameApplier {
             onFloatingMoved?(id, frame)
             return
         }
-        if NSEvent.pressedMouseButtons != 0 { dragged.insert(id) }
+        lastObserved[id] = frame
+        if isUserDrag(frame, target) { dragged.insert(id) }
         scheduleDriftCheck(id)
+    }
+
+    /// A drag moves the window (a resize-only change is the app snapping its
+    /// size) with a button held and the cursor on the window itself.
+    private func isUserDrag(_ frame: CGRect, _ target: Target) -> Bool {
+        guard !target.parked, NSEvent.pressedMouseButtons != 0 else { return false }
+        let moved = abs(frame.minX - target.frame.minX) > 8 || abs(frame.minY - target.frame.minY) > 8
+        return moved && frame.contains(Self.cursorLocation())
     }
 
     private func matches(_ frame: CGRect, _ target: Target) -> Bool {
         if target.parked {
-            return abs(frame.minX - target.frame.minX) <= 2 && abs(frame.minY - target.frame.minY) <= 2
+            // macOS keeps a parked window's title bar reachable by raising it a
+            // little; only the horizontal position says it is off screen
+            return abs(frame.minX - target.frame.minX) <= 2 && frame.minY <= target.frame.minY + 2
         }
         return frame.isClose(to: target.frame, tolerance: 2)
     }
@@ -135,14 +149,14 @@ final class FrameApplier {
         driftChecks[id] = nil
         guard targets[id] != nil else { return }
         if NSEvent.pressedMouseButtons != 0 {
-            // still being dragged: wait for the drop
-            dragged.insert(id)
+            // a button is still held: wait for the drop before touching it
             scheduleDriftCheck(id)
             return
         }
         if dragged.remove(id) != nil {
             targets[id]?.reasserts = 0
-            if onUserDrop?(id, Self.cursorLocation()) == true { return }
+            let point = Self.cursorLocation()
+            if lastObserved[id]?.contains(point) == true, onUserDrop?(id, point) == true { return }
             rewrite(id)
             return
         }
