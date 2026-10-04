@@ -8,6 +8,8 @@ public enum Effect: Equatable, Sendable {
     case kill(pid: Int32)
     /// Give the window OS keyboard focus and raise it.
     case focus(WindowID)
+    /// Activate the app (it keys its own window), managed or not.
+    case activate(pid: Int32)
     case warpCursor(CGPoint)
     /// The active submap changed ("" is the global map).
     case submap(String)
@@ -15,6 +17,18 @@ public enum Effect: Equatable, Sendable {
     case exit
     /// A dispatcher could not run; worth a log line, not an alert.
     case failed(String)
+}
+
+/// Who has the OS keyboard: the frontmost app and, once known, its focused
+/// window. Unmanaged apps and hyprdarwin itself count too.
+public struct KeyboardOwner: Equatable, Sendable {
+    public var pid: Int32
+    public var window: WindowID?
+
+    public init(pid: Int32, window: WindowID? = nil) {
+        self.pid = pid
+        self.window = window
+    }
 }
 
 /// State changes, named after Hyprland's event socket events so the event

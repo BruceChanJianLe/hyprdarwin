@@ -483,16 +483,22 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         manager.externalFocus(1)
         #expect(manager.addWindow(info(2, title: "Mail - Inbox"), isNew: true).isEmpty)
         // macOS keys the new window on the hidden workspace
-        #expect(manager.externalFocus(2, justOpened: true) == [.focus(1)], "the keyboard goes back to the previous window")
+        let managed = KeyboardOwner(pid: 101, window: 1)
+        #expect(manager.externalFocus(2, justOpened: true, previousOwner: managed) == [.focus(1)],
+                "the keyboard goes back to the previous window")
         #expect(manager.focusedWindow == 1)
         #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1), "without switching workspace")
-        _ = manager.drainEvents()
 
-        manager.removeWindow(1)
+        // the keyboard was on an unmanaged app (Ghostty), not on the model's last focused window
         manager.addWindow(info(3, title: "Mail - Drafts"), isNew: true)
-        #expect(manager.externalFocus(3, justOpened: true).isEmpty)
-        #expect(manager.focusedWindow == nil, "nothing to give it back to")
-        #expect(manager.drainEvents().contains(.activeWindow(nil, bundleID: "", title: "")))
+        let ghostty = KeyboardOwner(pid: 999, window: 50)
+        #expect(manager.externalFocus(3, justOpened: true, previousOwner: ghostty) == [.activate(pid: 999)],
+                "Ghostty gets it back, not window 1")
+        #expect(manager.focusedWindow == 1)
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1))
+
+        manager.addWindow(info(4, title: "Mail - Sent"), isNew: true)
+        #expect(manager.externalFocus(4, justOpened: true).isEmpty, "no known owner: nothing to give back")
         #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1))
 
         #expect(manager.externalFocus(2) == [], "a later click on it still switches there")

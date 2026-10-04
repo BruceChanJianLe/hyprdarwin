@@ -37,6 +37,9 @@ final class AppController {
     private var known: [pid_t: Set<WindowID>] = [:]
     private var lastPlan = Plan()
     private var lastOSFocus: WindowID?
+    /// Who has the keyboard now and who had it before (any app, managed or not).
+    private var keyboardOwner: KeyboardOwner?
+    private var previousKeyboardOwner: KeyboardOwner?
     /// When each window opened, to tell "macOS focused a brand-new window"
     /// apart from the user focusing it.
     private var openedAt: [WindowID: Date] = [:]
@@ -102,6 +105,11 @@ final class AppController {
             self.refresh()
         })
         let workspaceCenter = NSWorkspace.shared.notificationCenter
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier { keyboardOwner = KeyboardOwner(pid: pid) }
+        observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            self?.noteKeyboard(pid: app.processIdentifier, window: nil)
+        })
         observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             // a key-up can be lost across sleep; and apps may have moved windows
@@ -285,6 +293,14 @@ final class AppController {
                 Log.info("focusing window \(id) (\(window.info.bundleID))")
                 lastOSFocus = id
                 source.focus(pid: pid, id: id)
+            case .activate(let pid):
+                Log.info("giving the keyboard back to pid \(pid)")
+                lastOSFocus = nil
+                if pid == ProcessInfo.processInfo.processIdentifier {
+                    NSApp.activate()
+                } else {
+                    NSRunningApplication(processIdentifier: pid)?.activate()
+                }
             case .warpCursor(let point):
                 CGWarpMouseCursorPosition(point)
                 CGAssociateMouseAndMouseCursorPosition(1)
@@ -354,6 +370,7 @@ final class AppController {
             // background apps change their own focused window too; only the
             // frontmost app's focus is the keyboard's (activation re-reports it)
             guard pid == NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+            noteKeyboard(pid: pid, window: id)
             handleOSFocus(id)
         case .applied(let results):
             // our own write read back: the real frame, never a user move
@@ -375,7 +392,19 @@ final class AppController {
         if justOpened, !activeConfig.focusOnOpen, !model.isVisible(window.workspace) {
             Log.info("window \(id) opened on hidden workspace \(window.workspace); staying put (misc.focus_on_open is off)")
         }
-        perform(model.externalFocus(id, justOpened: justOpened))
+        perform(model.externalFocus(id, justOpened: justOpened, previousOwner: previousKeyboardOwner))
+    }
+
+    /// Track the keyboard's owner: a new frontmost app, or a new focused
+    /// window within it (an app reporting no window keeps the one it had).
+    private func noteKeyboard(pid: pid_t, window: WindowID?) {
+        if pid != keyboardOwner?.pid {
+            previousKeyboardOwner = keyboardOwner
+            keyboardOwner = KeyboardOwner(pid: pid, window: window)
+        } else if let window, window != keyboardOwner?.window {
+            if keyboardOwner?.window != nil { previousKeyboardOwner = keyboardOwner }
+            keyboardOwner?.window = window
+        }
     }
 
     /// A tiled window dragged onto another tile swaps with it.

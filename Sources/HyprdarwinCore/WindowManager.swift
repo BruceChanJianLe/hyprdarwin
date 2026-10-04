@@ -470,17 +470,17 @@ public final class WindowManager {
     /// The OS moved keyboard focus (click, Cmd-Tab, app activation). A window
     /// on a hidden workspace brings its workspace into view, except a window
     /// that `justOpened` there while misc.focus_on_open is off: the keyboard
-    /// goes back to the previously focused window and the user stays put.
+    /// goes back to `previousOwner`, whoever had it before, and the user
+    /// stays put.
     @discardableResult
-    public func externalFocus(_ id: WindowID, justOpened: Bool = false) -> [Effect] {
+    public func externalFocus(_ id: WindowID, justOpened: Bool = false, previousOwner: KeyboardOwner? = nil) -> [Effect] {
         guard let window = windows[id] else { return [] }
         if justOpened, !config.focusOnOpen, !isVisible(window.workspace) {
-            if let previous = focusedWindow, let workspace = windows[previous]?.workspace, isVisible(workspace) {
-                return focus(previous, warp: false)
+            guard let previous = previousOwner, previous.window != id else { return [] }
+            if let previousWindow = previous.window, let workspace = windows[previousWindow]?.workspace, isVisible(workspace) {
+                return focus(previousWindow, warp: false)
             }
-            focusedWindow = nil
-            emit(.activeWindow(nil, bundleID: "", title: ""))
-            return []
+            return [.activate(pid: previous.pid)]
         }
         var effects: [Effect] = []
         // focusing a window a fullscreen one hides brings the workspace back
