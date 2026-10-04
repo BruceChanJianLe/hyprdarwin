@@ -30,9 +30,10 @@ hl.config({
 
         border_size = 2,      -- 0 hides the borders
         col = {
-            active_border   = "rgba(33ccffee)", -- focused window: cyan
-            inactive_border = "rgba(9b5de5aa)", -- other windows: purple
-            -- gradients work too: { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }
+            active_border = "rgba(33ccffee) rgba(00ff99ee) 45deg", -- focused window: cyan to green
+            -- other windows get no border unless you set one:
+            -- inactive_border = "rgba(9b5de5aa)",
+            -- or as a table: { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }
         },
     },
 

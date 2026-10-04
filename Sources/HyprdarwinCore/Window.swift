@@ -54,7 +54,7 @@ public struct ManagedWindow: Equatable, Sendable {
     public var initialTitle: String
     public var tags: Set<String> = []
     /// Dynamic rule results, kept for the border overlay.
-    public var borderColor: String?
+    public var borderColor: BorderColor?
     public var borderSize: Int?
 
     public init(info: WindowInfo, workspace: WorkspaceID, isFloating: Bool) {

@@ -4,7 +4,8 @@ import QuartzCore
 
 /// Hyprland-style window borders: a ring around every visible managed
 /// window, `general.col.active_border` on the focused one and
-/// `general.col.inactive_border` on the rest (gradients supported).
+/// `general.col.inactive_border` (none by default) on the rest (gradients
+/// supported).
 ///
 /// Each ring is a borderless, click-through, non-activating panel ordered
 /// directly above its own window, so it never covers windows stacked above
@@ -28,7 +29,7 @@ final class BorderController {
             let actual = window.info.frame
             let frame = actual.intersects(planned) ? actual : planned
             let isActive = id == activeWindow
-            let colors = window.borderColor.flatMap(Self.parse) ?? (isActive ? config.activeBorder : config.inactiveBorder)
+            guard let colors = window.borderColor ?? (isActive ? config.activeBorder : config.inactiveBorder) else { continue }
 
             let panel = panels[id] ?? BorderPanel()
             panels[id] = panel
@@ -50,20 +51,6 @@ final class BorderController {
     func hideAll() {
         panels.values.forEach { $0.orderOut(nil) }
         panels.removeAll()
-    }
-
-    /// A dynamic rule's border_color: "rgba(...)", or "rgba(..) rgba(..) 45deg".
-    static func parse(_ text: String) -> BorderColor? {
-        var colors: [Color] = []
-        var angle = 0.0
-        for token in text.split(whereSeparator: \.isWhitespace) {
-            if token.hasSuffix("deg"), let degrees = Double(token.dropLast(3)) {
-                angle = degrees
-            } else if let color = Color(parsing: String(token)) {
-                colors.append(color)
-            }
-        }
-        return colors.isEmpty ? nil : BorderColor(colors: colors, angle: angle)
     }
 }
 

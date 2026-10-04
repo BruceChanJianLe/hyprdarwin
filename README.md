@@ -160,7 +160,7 @@ Options:
 | `general.layout` | `"dwindle"` or `"master"` |
 | `general.gaps_in`, `general.gaps_out` | number, or `"top right bottom left"` (1 to 4 numbers) |
 | `general.border_size` | border width in points (default 2, 0 hides borders) |
-| `general.col.active_border`, `general.col.inactive_border` | border colours of the focused window (default cyan `rgba(33ccffee)`) and the others (default purple `rgba(9b5de5aa)`): a colour, `{ colors = { ... }, angle = 45 }` for a gradient, or `0xAARRGGBB` |
+| `general.col.active_border`, `general.col.inactive_border` | border colours of the focused window (default the Hyprland gradient `"rgba(33ccffee) rgba(00ff99ee) 45deg"`) and the others (default none: unfocused windows get no border): a colour, `"rgba(..) rgba(..) 45deg"`, `{ colors = { ... }, angle = 45 }` for a gradient, or `0xAARRGGBB` |
 | `dwindle.preserve_split` | keep split directions when windows change |
 | `dwindle.force_split` | 0 cursor side, 1 left/top, 2 right/bottom |
 | `dwindle.default_split_ratio` | 0.1 to 1.9 (1.0 even) |
@@ -220,7 +220,7 @@ Windows the app does not allow to be resized always float.
 - **Workspaces** are virtual: windows on hidden workspaces are parked in the bottom-right corner of the right-most display with a 1 pt sliver left on screen. Use one macOS Space per display, and leave that corner free.
 - Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace.
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.
-- **Borders** are drawn in the gap around every visible window: the active colour only while that window really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every border inactive). They are click-through overlays that never take focus. A `.fullscreen` window gets none.
+- **Borders** are drawn in the gap around the focused window, only while it really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every window inactive), and around the other visible windows when `general.col.inactive_border` or a rule's `border_color` is set. They are click-through overlays that never take focus. A `.fullscreen` window gets none.
 - Native macOS tabs (Ghostty, Finder, Terminal) are one tile: switching tabs keeps the tile where it is.
 - Logs: `~/Library/Logs/hyprdarwin.log` (set `HYPRDARWIN_DEBUG=1` for more), or `log stream --predicate 'subsystem == "io.github.brucechanjianle.hyprdarwin"'`. `kill -USR1 $(pgrep -x hyprdarwin)` writes the full window and workspace state to the log.
 

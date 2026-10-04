@@ -471,6 +471,35 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.windows[3]?.workspace == .numbered(6))
     }
 
+    @Test func silentlyOpenedWindowsGiveTheKeyboardBack() throws {
+        let manager = makeManager { config in
+            config.focusOnOpen = false
+            config.windowRules = [try! rule { match, effects in
+                match.title = try RulePattern("^Mail")
+                effects.workspace = WorkspaceTarget(parsing: "6 silent")
+            }]
+        }
+        manager.addWindow(info(1), isNew: true)
+        manager.externalFocus(1)
+        #expect(manager.addWindow(info(2, title: "Mail - Inbox"), isNew: true).isEmpty)
+        // macOS keys the new window on the hidden workspace
+        #expect(manager.externalFocus(2, justOpened: true) == [.focus(1)], "the keyboard goes back to the previous window")
+        #expect(manager.focusedWindow == 1)
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1), "without switching workspace")
+        _ = manager.drainEvents()
+
+        manager.removeWindow(1)
+        manager.addWindow(info(3, title: "Mail - Drafts"), isNew: true)
+        #expect(manager.externalFocus(3, justOpened: true).isEmpty)
+        #expect(manager.focusedWindow == nil, "nothing to give it back to")
+        #expect(manager.drainEvents().contains(.activeWindow(nil, bundleID: "", title: "")))
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1))
+
+        #expect(manager.externalFocus(2) == [], "a later click on it still switches there")
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(6))
+        #expect(manager.focusedWindow == 2)
+    }
+
     @Test func focusOnOpenFollowsNewWindows() throws {
         let manager = makeManager { config in
             config.focusOnOpen = true
@@ -494,6 +523,27 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         config.unmanagedApps = ["com.example.app"]
         manager.setConfig(config)
         #expect(manager.windows[2] == nil, "becoming unmanaged releases the window")
+    }
+
+    @Test func becomingUnmanagedUnparksAndKeepsTheKeyboard() throws {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2, bundle: "com.mitchellh.ghostty"), isNew: true)
+        manager.addWindow(info(3, bundle: "com.mitchellh.ghostty"), isNew: true)
+        manager.dispatch(.moveToWorkspace(.id(.numbered(4)), follow: false))
+        manager.externalFocus(2)
+        #expect(manager.windows[3]?.workspace == .numbered(4))
+        _ = manager.drainEvents()
+
+        var config = manager.config
+        config.unmanagedApps = ["com.mitchellh.ghostty"]
+        let released = manager.setConfig(config)
+        #expect(manager.windows[2] == nil && manager.windows[3] == nil)
+        #expect(released.map(\.info.id) == [3], "only the parked window needs bringing back")
+        let frame = try #require(released.first?.frame)
+        #expect(primary.visibleFrame.contains(frame))
+        #expect(manager.focusedWindow == nil, "no fallback focus steals the keyboard from the released window")
+        #expect(manager.drainEvents().contains(.activeWindow(nil, bundleID: "", title: "")))
     }
 
     @Test func cycleLayoutSurvivesReloads() {

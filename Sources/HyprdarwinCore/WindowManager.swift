@@ -269,7 +269,10 @@ public final class WindowManager {
 
     // MARK: - Config
 
-    public func setConfig(_ newConfig: Config) {
+    /// Install a new config. Returns the windows it released (their app
+    /// became unmanaged) that were parked, with where to put them back.
+    @discardableResult
+    public func setConfig(_ newConfig: Config) -> [(info: WindowInfo, frame: CGRect)] {
         let old = config
         config = newConfig
         for (id, workspace) in workspaces {
@@ -289,8 +292,15 @@ public final class WindowManager {
             }
             workspaces[id]?.layout = layout
         }
-        for window in windows.values where newConfig.unmanagedApps.contains(window.info.bundleID) {
-            removeWindow(window.id)
+        let leaving = windows.values.filter { newConfig.unmanagedApps.contains($0.info.bundleID) }
+        var released: [(info: WindowInfo, frame: CGRect)] = []
+        if !leaving.isEmpty {
+            let parked = revealFrames()
+            for window in leaving.sorted(by: { $0.id < $1.id }) {
+                if let frame = parked[window.id] { released.append((window.info, frame)) }
+                // the keyboard stays on the released window: no fallback focus
+                removeWindow(window.id, refocus: false)
+            }
         }
         for id in windows.keys { applyDynamicRules(to: id) }
         if !submap.isEmpty && !newConfig.submaps.contains(submap) {
@@ -298,6 +308,7 @@ public final class WindowManager {
             emit(.submap(""))
         }
         emit(.configReloaded)
+        return released
     }
 
     // MARK: - Windows
@@ -400,7 +411,7 @@ public final class WindowManager {
 
     /// The source no longer sees the window (closed, minimized, app quit).
     @discardableResult
-    public func removeWindow(_ id: WindowID) -> [Effect] {
+    public func removeWindow(_ id: WindowID, refocus: Bool = true) -> [Effect] {
         guard let window = windows.removeValue(forKey: id) else { return [] }
         workspaces[window.workspace]?.layout.remove(id)
         focusHistory.removeAll { $0 == id }
@@ -411,7 +422,11 @@ public final class WindowManager {
         var effects: [Effect] = []
         if focusedWindow == id {
             focusedWindow = nil
-            effects = focusFallback(preferring: window.workspace)
+            if refocus {
+                effects = focusFallback(preferring: window.workspace)
+            } else {
+                emit(.activeWindow(nil, bundleID: "", title: ""))
+            }
         }
         collectGarbage()
         return effects
@@ -453,10 +468,20 @@ public final class WindowManager {
     }
 
     /// The OS moved keyboard focus (click, Cmd-Tab, app activation). A window
-    /// on a hidden workspace brings its workspace into view.
+    /// on a hidden workspace brings its workspace into view, except a window
+    /// that `justOpened` there while misc.focus_on_open is off: the keyboard
+    /// goes back to the previously focused window and the user stays put.
     @discardableResult
-    public func externalFocus(_ id: WindowID) -> [Effect] {
+    public func externalFocus(_ id: WindowID, justOpened: Bool = false) -> [Effect] {
         guard let window = windows[id] else { return [] }
+        if justOpened, !config.focusOnOpen, !isVisible(window.workspace) {
+            if let previous = focusedWindow, let workspace = windows[previous]?.workspace, isVisible(workspace) {
+                return focus(previous, warp: false)
+            }
+            focusedWindow = nil
+            emit(.activeWindow(nil, bundleID: "", title: ""))
+            return []
+        }
         var effects: [Effect] = []
         // focusing a window a fullscreen one hides brings the workspace back
         if window.fullscreen == nil { exitFullscreen(on: window.workspace) }

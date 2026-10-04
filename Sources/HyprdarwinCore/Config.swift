@@ -113,9 +113,11 @@ public struct Config: Sendable {
     public var gapsIn = Insets(all: 5)
     public var gapsOut = Insets(all: 20)
     public var borderSize = 2
-    public var activeBorder = BorderColor(colors: [Color(red: 0.2, green: 0.8, blue: 1, alpha: 0.93)])
-    /// Purple, rgba(9b5de5aa).
-    public var inactiveBorder = BorderColor(colors: [Color(red: 0x9b / 255, green: 0x5d / 255, blue: 0xe5 / 255, alpha: 0xaa / 255)])
+    /// Hyprland's default: rgba(33ccffee) rgba(00ff99ee) 45deg.
+    public var activeBorder = BorderColor(colors: [Color(red: 0x33 / 255, green: 0xcc / 255, blue: 1, alpha: 0xee / 255),
+                                                   Color(red: 0, green: 1, blue: 0x99 / 255, alpha: 0xee / 255)], angle: 45)
+    /// nil: unfocused windows get no border.
+    public var inactiveBorder: BorderColor?
     /// hd.config border_radius: corner radius of the border (macOS draws the
     /// windows' own corners, so match them).
     public var borderRadius = 12.0

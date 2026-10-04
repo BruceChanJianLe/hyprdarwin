@@ -174,9 +174,15 @@ final class AppController {
     }
 
     private func install(_ config: Config, runtime newRuntime: LuaConfigRuntime?) {
+        let unmanagedChanged = config.unmanagedApps != activeConfig.unmanagedApps
         activeConfig = config
         runtime = newRuntime
-        model.setConfig(config)
+        let released = model.setConfig(config)
+        if managing && !paused {
+            source.setFrames(released.map { ($0.info.pid, $0.info.id, $0.frame, false) })
+            // windows of apps no longer unmanaged are adopted on the next snapshot
+            if unmanagedChanged { source.refreshAll() }
+        }
         input.update(binds: config.binds, hyprKey: config.hyprKey)
         input.setSubmap(model.submap)
         updateCapsRemap()
@@ -317,14 +323,16 @@ final class AppController {
                 perform(model.removeWindow(id))
             }
             for info in infos {
-                if previous.contains(info.id) || model.windows[info.id] != nil {
+                if model.windows[info.id] != nil {
                     model.updateInfo(info)
                 } else if activeConfig.unmanagedApps.contains(info.bundleID) {
                     continue
                 } else {
-                    Log.info("window \(info.id) \(initial ? "found" : "opened"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
-                    if !initial { openedAt[info.id] = Date() }
-                    perform(model.addWindow(info, isNew: !initial))
+                    // a window seen before (its app was unmanaged) is adopted, not opened
+                    let isNew = !initial && !previous.contains(info.id)
+                    Log.info("window \(info.id) \(isNew ? "opened" : "found"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
+                    if isNew { openedAt[info.id] = Date() }
+                    perform(model.addWindow(info, isNew: isNew))
                 }
             }
             known[pid] = current.isEmpty ? nil : current
@@ -342,7 +350,10 @@ final class AppController {
             guard var info = model.windows[id]?.info else { return }
             info.title = title
             model.updateInfo(info)
-        case let .focused(_, id):
+        case let .focused(pid, id):
+            // background apps change their own focused window too; only the
+            // frontmost app's focus is the keyboard's (activation re-reports it)
+            guard pid == NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
             handleOSFocus(id)
         case .applied(let results):
             // our own write read back: the real frame, never a user move
@@ -360,14 +371,11 @@ final class AppController {
         guard let window = model.windows[id], id != model.focusedWindow else { return }
         // a stale notification from the workspace we just left must not pull us back
         if !model.isVisible(window.workspace), Date().timeIntervalSince(lastWorkspaceChange) < 0.5 { return }
-        // focus_on_open off: macOS keying a window that just opened on a hidden
-        // workspace must not take the user there
-        if !activeConfig.focusOnOpen, !model.isVisible(window.workspace),
-           let opened = openedAt[id], Date().timeIntervalSince(opened) < 2 {
+        let justOpened = openedAt[id].map { Date().timeIntervalSince($0) < 2 } ?? false
+        if justOpened, !activeConfig.focusOnOpen, !model.isVisible(window.workspace) {
             Log.info("window \(id) opened on hidden workspace \(window.workspace); staying put (misc.focus_on_open is off)")
-            return
         }
-        perform(model.externalFocus(id))
+        perform(model.externalFocus(id, justOpened: justOpened))
     }
 
     /// A tiled window dragged onto another tile swaps with it.

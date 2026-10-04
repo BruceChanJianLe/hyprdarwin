@@ -337,8 +337,8 @@ struct ConfigBuilder {
             case "maximize": if try flag() { effects.fullscreen = .maximized }
             case "no_initial_focus": effects.noInitialFocus = try flag()
             case "border_color":
-                guard Self.borderColor(value) != nil else { throw fail("border_color must be a colour like \"rgba(33ccffee)\"") }
-                effects.borderColor = value.text ?? Self.render(value)
+                guard let color = Self.borderColor(value) else { throw fail("border_color must be a colour like \"rgba(33ccffee)\"") }
+                effects.borderColor = color
             case "border_size":
                 guard let size = value.int, size >= 0 else { throw fail("border_size must be a whole number >= 0") }
                 effects.borderSize = size

@@ -109,7 +109,7 @@ public struct WindowRuleEffects: Sendable {
     public var noInitialFocus: Bool?
     public var tags: [String] = []
     // dynamic: re-applied whenever the window's title or state changes
-    public var borderColor: String?
+    public var borderColor: BorderColor?
     public var borderSize: Int?
 
     public init() {}

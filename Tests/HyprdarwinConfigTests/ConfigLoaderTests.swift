@@ -39,6 +39,10 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(resizeBinds.first?.repeating == true)
         #expect(config.binds.allSatisfy { $0.submap == nil || $0.submap == "resize" })
         #expect(config.focusOnOpen == false)
+        #expect(config.activeBorder == Config().activeBorder, "the Hyprland gradient")
+        #expect(config.activeBorder.colors == ["rgba(33ccffee)", "rgba(00ff99ee)"].map { Color(parsing: $0)! })
+        #expect(config.activeBorder.angle == 45)
+        #expect(config.inactiveBorder == nil, "unfocused windows get no border")
 
         func action(_ keys: String) -> BindAction? {
             let combo = try! KeyCombo.parse(keys).get()
@@ -293,10 +297,12 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         hl.window_rule({ match = { class = "teams", title = "negative:.*Meeting.*" }, workspace = 4, tile = true })
         hl.window_rule({ match = { class = "x", xwayland = true }, float = true })
         hl.window_rule({ match = { subrole = "AXDialog" }, center = true, border_color = "rgba(ff0000ff)", dynamic = true })
+        hl.window_rule({ match = { class = "red" }, border_color = 0xffff0000 })
+        hl.window_rule({ match = { class = "fade" }, border_color = { colors = { "rgb(ff0000)", "rgb(0000ff)" }, angle = 90 } })
         pip:set_enabled(false)
         """#)
         let config = try #require(result.config, "\(result.messages)")
-        #expect(config.windowRules.count == 4, "the xwayland rule can never match on macOS")
+        #expect(config.windowRules.count == 6, "the xwayland rule can never match on macOS")
         #expect(config.windowRules[0].enabled == false)
         #expect(config.windowRules[0].name == "pip")
         #expect(config.windowRules[0].effects.size == "480 270")
@@ -305,7 +311,10 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(config.windowRules[2].effects.float == false)
         #expect(config.windowRules[2].match.title?.matches("Weekly Meeting") == false)
         #expect(config.windowRules[3].dynamic)
-        #expect(config.windowRules[3].effects.borderColor == "rgba(ff0000ff)")
+        let red = Color(red: 1, green: 0, blue: 0, alpha: 1)
+        #expect(config.windowRules[3].effects.borderColor == BorderColor(colors: [red]))
+        #expect(config.windowRules[4].effects.borderColor == BorderColor(colors: [red]))
+        #expect(config.windowRules[5].effects.borderColor == BorderColor(colors: [red, Color(red: 0, green: 0, blue: 1, alpha: 1)], angle: 90))
         #expect(infos(result).contains { $0.contains("opacity is ignored on macOS") })
     }
 
