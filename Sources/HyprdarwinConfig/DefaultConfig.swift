@@ -45,8 +45,14 @@ hl.config({
         follow_mouse = 1, -- 1: focus follows the cursor, 0: focus on click
     },
 
+    misc = {
+        -- false: a new window opens on its workspace without taking focus or
+        -- switching workspaces (you stay where you are); true: focus follows it
+        focus_on_open = false,
+        -- disable_autoreload = false,
+    },
+
     -- cursor = { no_warps = false }, -- keyboard focus moves the cursor along
-    -- misc   = { disable_autoreload = false },
 })
 
 -- macOS-only settings live under `hd`, which is nil on Hyprland, so a shared
@@ -55,6 +61,7 @@ if hd then
     hd.config({
         hypr_key    = "caps_lock",    -- "caps_lock", "f18" (already remapped elsewhere) or "none"
         hide_corner = "bottom-right", -- where hidden workspaces' windows are parked
+        -- unmanaged_apps = { "com.mitchellh.ghostty" }, -- bundle ids hyprdarwin never moves
     })
 end
 
@@ -79,15 +86,24 @@ hl.bind(mod .. " + V",      hl.dsp.window.float({ action = "toggle" }), { descri
 hl.bind(mod .. " + F",         hl.dsp.window.fullscreen({ mode = "maximized" }), { description = "Toggle maximized" })
 hl.bind(mod .. " + SHIFT + F", hl.dsp.window.fullscreen(),                       { description = "Toggle fullscreen" })
 hl.bind(mod .. " + C",      hl.dsp.window.center(),                    { description = "Center floating window" })
-hl.bind(mod .. " + J",      hl.dsp.layout("togglesplit"),              { description = "Toggle split (dwindle)" })
+hl.bind(mod .. " + SPACE",  hl.dsp.layout("togglesplit"),              { description = "Toggle split (dwindle)" })
 hl.bind(mod .. " + SHIFT + RETURN", hl.dsp.layout("swapwithmaster"),   { description = "Swap with master (master)" })
 hl.bind(mod .. " + SHIFT + R", hl.dsp.reload_config(),                 { description = "Reload config" })
+if hd then
+    -- this workspace switches between dwindle and master (hyprdarwin-only)
+    hl.bind(mod .. " + SHIFT + SPACE", hd.dsp.cycle_layout(), { description = "Cycle layout (dwindle / master)" })
+end
 
--- Focus, swap and move with the arrow keys.
-for _, dir in ipairs({ "left", "right", "up", "down" }) do
-    hl.bind(mod .. " + " .. dir,         hl.dsp.focus({ direction = dir }))
-    hl.bind(mod .. " + SHIFT + " .. dir, hl.dsp.window.swap({ direction = dir }))
-    hl.bind(mod .. " + CTRL + " .. dir,  hl.dsp.window.move({ direction = dir }))
+-- Vim-style focus (h/j/k/l), swap (SHIFT) and move (CTRL); the arrow keys work too.
+-- Move swaps with the neighbour, or hops to the next monitor at the edge.
+local directions = {
+    h = "left", j = "down", k = "up", l = "right",
+    left = "left", down = "down", up = "up", right = "right",
+}
+for key, dir in pairs(directions) do
+    hl.bind(mod .. " + " .. key,         hl.dsp.focus({ direction = dir }))
+    hl.bind(mod .. " + SHIFT + " .. key, hl.dsp.window.swap({ direction = dir }))
+    hl.bind(mod .. " + CTRL + " .. key,  hl.dsp.window.move({ direction = dir }))
 end
 
 -- Workspaces 1-10 (key 0 is workspace 10). SHIFT moves the window and follows it;

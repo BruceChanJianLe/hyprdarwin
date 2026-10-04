@@ -184,6 +184,10 @@ public final class LuaConfigRuntime {
         // hd: hyprdarwin-only extras; nil on Hyprland, so `if hd then` gates them
         hd_newtable(L)
         setBuiltin("config", .macConfig)
+        hd_newtable(L)
+        setBuiltin("cycle_layout", .dispatcher, "hd.cycle_layout")
+        namespaceIndexMetatable(prefix: "hd.")
+        lua_setfield(L, -2, "dsp")
         lua_pushstring(L, "0.1.0")
         lua_setfield(L, -2, "version")
         lua_setglobal(L, "hd")

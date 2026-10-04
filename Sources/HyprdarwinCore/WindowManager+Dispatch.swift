@@ -80,6 +80,13 @@ extension WindowManager {
             return moveWorkspace(id, to: monitor)
         case .layoutMessage(let message):
             return layoutMessage(message)
+        case .cycleLayout:
+            guard let id = focusedWorkspaceID, let workspace = workspaces[id], let area = tilingArea(for: id) else { return [] }
+            let all = LayoutKind.allCases
+            let next = all[(all.firstIndex(of: workspace.layout.kind)! + 1) % all.count]
+            layoutOverrides[id] = next
+            workspaces[id]?.layout = workspace.layout.converted(to: next, area: area, options: config.layoutOptions)
+            return []
         case .submap(let name):
             let target = (name == "reset" || name.isEmpty) ? "" : name
             guard target.isEmpty || config.submaps.contains(target) else {

@@ -121,6 +121,11 @@ public struct Config: Sendable {
     /// Don't move the cursor to windows focused from the keyboard.
     public var noWarps = false
     public var disableAutoreload = false
+    /// misc.focus_on_open: focus newly opened windows, switching to their
+    /// workspace if needed. Off by default: new windows open silently.
+    public var focusOnOpen = false
+    /// hd.config unmanaged_apps: bundle ids hyprdarwin never touches.
+    public var unmanagedApps: Set<String> = []
     public var hyprKey = HyprKeyMode.capsLock
     public var hideCorner = HideCorner.bottomRight
 

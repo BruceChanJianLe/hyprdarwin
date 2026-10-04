@@ -36,6 +36,8 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
     case toggleSpecial(String)
     case moveWorkspaceToMonitor(WorkspaceSelector?, MonitorSelector)
     case layoutMessage(String)
+    /// hd.dsp.cycle_layout: the focused workspace switches dwindle <-> master.
+    case cycleLayout
     case submap(String)
     case reload
     case exit
@@ -63,6 +65,7 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
         case let .moveWorkspaceToMonitor(workspace, monitor):
             return "workspace.move(\(workspace.map { "workspace=\($0), " } ?? "")monitor=\(monitor))"
         case .layoutMessage(let message): return "layout(\(message))"
+        case .cycleLayout: return "hd.cycle_layout"
         case .submap(let name): return "submap(\(name))"
         case .reload: return "reload_config"
         case .exit: return "exit"

@@ -173,6 +173,9 @@ struct ConfigBuilder {
         case "misc.disable_autoreload":
             guard let flag = value.bool else { throw bad("a boolean") }
             config.disableAutoreload = flag
+        case "misc.focus_on_open":
+            guard let flag = value.bool else { throw bad("a boolean") }
+            config.focusOnOpen = flag
         default:
             let parts = path.split(separator: ".", maxSplits: 1).map(String.init)
             let section = parts[0]
@@ -202,6 +205,12 @@ struct ConfigBuilder {
                     throw ConfigError("\(location) hd.config hypr_key: expected \"caps_lock\", \"f18\" or \"none\"")
                 }
                 config.hyprKey = mode
+            case "unmanaged_apps":
+                guard let list = value.tableValue, list.fields.isEmpty,
+                      list.array.allSatisfy({ $0.text != nil }) else {
+                    throw ConfigError("\(location) hd.config unmanaged_apps: expected a list of bundle ids, e.g. { \"com.mitchellh.ghostty\" }")
+                }
+                config.unmanagedApps = Set(list.array.compactMap(\.text))
             case "hide_corner":
                 guard let text = value.text, let corner = HideCorner(rawValue: text) else {
                     throw ConfigError("\(location) hd.config hide_corner: expected \"bottom-right\" or \"bottom-left\"")

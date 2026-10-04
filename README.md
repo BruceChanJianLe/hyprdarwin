@@ -86,10 +86,12 @@ hl.config({
     dwindle = { preserve_split = true },
     master  = { mfact = 0.55, new_status = "slave", orientation = "left" },
     input   = { follow_mouse = 1 },
+    misc    = { focus_on_open = false },   -- new windows open without taking focus
 })
 
 if hd then
     hd.config({ hypr_key = "caps_lock", hide_corner = "bottom-right" })
+    hl.bind("HYPR + SHIFT + SPACE", hd.dsp.cycle_layout())   -- this workspace: dwindle <-> master
 end
 
 hl.workspace_rule({ workspace = "5", layout = "master" })
@@ -98,12 +100,12 @@ hl.bind(mod .. " + RETURN", hl.dsp.exec_cmd("open -na Ghostty"), { description =
 hl.bind(mod .. " + Q", hl.dsp.window.close())
 hl.bind(mod .. " + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mod .. " + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
-hl.bind(mod .. " + J", hl.dsp.layout("togglesplit"))
+hl.bind(mod .. " + SPACE", hl.dsp.layout("togglesplit"))
 hl.bind(mod .. " + S", hl.dsp.workspace.toggle_special("scratch"))
 
-for _, dir in ipairs({ "left", "right", "up", "down" }) do
-    hl.bind(mod .. " + " .. dir,         hl.dsp.focus({ direction = dir }))
-    hl.bind(mod .. " + SHIFT + " .. dir, hl.dsp.window.swap({ direction = dir }))
+for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right" }) do
+    hl.bind(mod .. " + " .. key,         hl.dsp.focus({ direction = dir }))
+    hl.bind(mod .. " + SHIFT + " .. key, hl.dsp.window.swap({ direction = dir }))
 end
 for i = 1, 10 do
     local key = tostring(i % 10)
@@ -128,7 +130,7 @@ hl.on("hyprland.start", function()
 end)
 ```
 
-The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) binds workspaces 1-10, a resize submap, a scratchpad and a few float rules.
+The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE cycles the layout; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + R enters a resize submap, HYPR + S toggles the scratchpad, HYPR + F maximizes.
 
 ### API reference
 
@@ -144,7 +146,7 @@ Calls:
 | `hl.on(event, function)` | `"hyprland.start"` / `"hyprdarwin.start"` (first load only), `"hyprland.shutdown"` / `"hyprdarwin.shutdown"` |
 | `hl.exec_cmd(cmd)` | Runs a shell command now (at load time: on every load) |
 | `hl.env(name, value)` | Exported to commands hyprdarwin runs |
-| `hd.config(table)` | macOS only: `hypr_key` (`"caps_lock"`, `"f18"`, `"none"`), `hide_corner` (`"bottom-right"`, `"bottom-left"`). `hd` is nil on Hyprland, so guard with `if hd then` |
+| `hd.config(table)` | macOS only: `hypr_key` (`"caps_lock"`, `"f18"`, `"none"`), `hide_corner` (`"bottom-right"`, `"bottom-left"`), `unmanaged_apps` (bundle ids hyprdarwin never moves or focuses, e.g. `{ "com.mitchellh.ghostty" }`). `hd` is nil on Hyprland, so guard with `if hd then` |
 | `hl.monitor`, `hl.curve`, `hl.animation`, `hl.gesture`, `hl.device`, `hl.permission`, `hl.layer_rule` | Accepted and ignored |
 
 Calling a dispatcher runs it: `hl.dsp.focus({ workspace = 2 })()` inside a bound function, or at the top level of the config (it then runs after each load).
@@ -169,6 +171,7 @@ Options:
 | `input.follow_mouse` | 1 focus follows the cursor, 0 focus on click |
 | `cursor.no_warps` | don't move the cursor to windows focused from the keyboard |
 | `misc.disable_autoreload` | stop watching the config |
+| `misc.focus_on_open` | `false` (default): a new window opens on its workspace (rules included) without taking focus or switching workspaces, so you stay where you are. `true`: focus follows the new window, switching workspace if needed (Hyprland's behaviour) |
 
 Dispatchers (`hl.dsp.*`):
 
@@ -189,6 +192,7 @@ Dispatchers (`hl.dsp.*`):
 | `workspace.move({ monitor, workspace? })` | |
 | `layout(message)` | dwindle: `togglesplit`, `swapsplit`, `splitratio <delta>` / `splitratio exact <v>`; master: `swapwithmaster`, `focusmaster`, `addmaster`, `removemaster`, `mfact <delta>` / `mfact exact <v>`, `orientation{left,right,top,bottom,next,prev}`, `cyclenext`, `cycleprev`, `swapnext`, `swapprev`, `rollnext`, `rollprev` |
 | `submap(name)`, `reload_config()`, `exit()`, `no_op()` | `exit` quits hyprdarwin |
+| `hd.dsp.cycle_layout()` | hyprdarwin only: the focused workspace switches between dwindle and master (kept across reloads) |
 
 Workspace selectors: `3`, `"special"`, `"special:name"`, `"+1"`/`"-1"` (relative number), `"e+1"`/`"e-1"` (next/previous existing), `"m+1"`/`"m-1"` (existing on this monitor), `"previous"`, `"empty"`. Monitor selectors: a name (or part of it), an index from the left, `"l"`/`"r"`/`"u"`/`"d"`, `"+1"`/`"-1"`, `"current"`.
 

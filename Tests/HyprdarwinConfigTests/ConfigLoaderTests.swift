@@ -38,6 +38,38 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(resizeBinds.count == 6)
         #expect(resizeBinds.first?.repeating == true)
         #expect(config.binds.allSatisfy { $0.submap == nil || $0.submap == "resize" })
+        #expect(config.focusOnOpen == false)
+
+        func action(_ keys: String) -> BindAction? {
+            let combo = try! KeyCombo.parse(keys).get()
+            return config.binds.first { $0.combo == combo && $0.submap == nil }?.action
+        }
+        #expect(action("HYPR + h") == .dispatcher(.focusDirection(.left)))
+        #expect(action("HYPR + j") == .dispatcher(.focusDirection(.down)))
+        #expect(action("HYPR + k") == .dispatcher(.focusDirection(.up)))
+        #expect(action("HYPR + l") == .dispatcher(.focusDirection(.right)))
+        #expect(action("HYPR + SHIFT + l") == .dispatcher(.swapDirection(.right)))
+        #expect(action("HYPR + left") == .dispatcher(.focusDirection(.left)))
+        #expect(action("HYPR + SPACE") == .dispatcher(.layoutMessage("togglesplit")))
+        #expect(action("HYPR + SHIFT + SPACE") == .dispatcher(.cycleLayout))
+        #expect(action("HYPR + F") == .dispatcher(.fullscreen(.maximized, .toggle)))
+        let combos = config.binds.filter { $0.submap == nil }.map(\.combo)
+        #expect(Set(combos).count == combos.count, "no two global binds share a key")
+    }
+
+    @Test func focusOnOpenAndUnmanagedApps() throws {
+        let config = try #require(load("""
+        hl.config({ misc = { focus_on_open = true } })
+        hd.config({ unmanaged_apps = { "com.mitchellh.ghostty" } })
+        hl.bind("HYPR + C", hd.dsp.cycle_layout())
+        """).config)
+        #expect(config.focusOnOpen)
+        #expect(config.unmanagedApps == ["com.mitchellh.ghostty"])
+        #expect(config.binds[0].action == .dispatcher(.cycleLayout))
+        #expect(load("hd.config({ unmanaged_apps = \"com.mitchellh.ghostty\" })").config == nil)
+        #expect(load("hl.config({ misc = { focus_on_open = \"sometimes\" } })").config == nil)
+        let unknown = load("hl.bind(\"HYPR + C\", hd.dsp.frobnicate())")
+        #expect(unknown.messages.contains { $0.text.contains("hd.dsp.frobnicate is not a known dispatcher") })
     }
 }
 

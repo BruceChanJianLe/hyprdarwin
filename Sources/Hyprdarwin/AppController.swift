@@ -36,6 +36,9 @@ final class AppController {
     private var known: [pid_t: Set<WindowID>] = [:]
     private var lastPlan = Plan()
     private var lastOSFocus: WindowID?
+    /// When each window opened, to tell "macOS focused a brand-new window"
+    /// apart from the user focusing it.
+    private var openedAt: [WindowID: Date] = [:]
     private var lastWorkspaceChange = Date.distantPast
     private var lastHoverCheck = Date.distantPast
     private var trustTimer: Timer?
@@ -304,12 +307,14 @@ final class AppController {
                     model.updateInfo(info)
                 } else {
                     Log.info("window \(info.id) \(initial ? "found" : "opened"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
+                    if !initial { openedAt[info.id] = Date() }
                     perform(model.addWindow(info, isNew: !initial))
                 }
             }
             known[pid] = current.isEmpty ? nil : current
         case let .destroyed(pid, id):
             known[pid]?.remove(id)
+            openedAt[id] = nil
             if model.windows[id] != nil { Log.info("window \(id) closed") }
             perform(model.removeWindow(id))
         case let .frame(id, frame):
@@ -337,6 +342,13 @@ final class AppController {
         guard let window = model.windows[id], id != model.focusedWindow else { return }
         // a stale notification from the workspace we just left must not pull us back
         if !model.isVisible(window.workspace), Date().timeIntervalSince(lastWorkspaceChange) < 0.5 { return }
+        // focus_on_open off: macOS keying a window that just opened on a hidden
+        // workspace must not take the user there
+        if !activeConfig.focusOnOpen, !model.isVisible(window.workspace),
+           let opened = openedAt[id], Date().timeIntervalSince(opened) < 2 {
+            Log.info("window \(id) opened on hidden workspace \(window.workspace); staying put (misc.focus_on_open is off)")
+            return
+        }
         perform(model.externalFocus(id))
     }
 
@@ -375,10 +387,13 @@ final class AppController {
             case .workspace, .activeSpecial:
                 lastWorkspaceChange = Date()
             case .activeWindow(nil, _, _):
-                // nothing to focus (empty workspace): take keyboard focus
-                // ourselves so typing cannot reach a window on a hidden workspace
-                NSApp.activate()
-                lastOSFocus = nil
+                // nothing to focus (empty workspace). Only if the keyboard is on
+                // a window we just hid, take it ourselves so typing cannot reach
+                // a hidden window; never take it from an unmanaged app.
+                if let os = lastOSFocus, let window = model.windows[os], !model.isVisible(window.workspace) {
+                    NSApp.activate()
+                    lastOSFocus = nil
+                }
             default:
                 break
             }
@@ -469,7 +484,12 @@ final class AppController {
             lines.append("  monitor \(monitor.id) \"\(monitor.name)\" \(FrameApplier.describe(monitor.frame)) workspace \(state?.activeWorkspace.description ?? "-")\(state?.special.map { " special:\($0)" } ?? "")\(monitor.id == model.focusedMonitorID ? " (focused)" : "")")
         }
         for workspace in model.workspaces.values.sorted(by: { $0.id < $1.id }) {
-            lines.append("  workspace \(workspace.id) on \(workspace.monitorID) layout \(workspace.layout.kind.rawValue) tiled \(workspace.layout.windows)")
+            lines.append("  workspace \(workspace.id) on \(workspace.monitorID) layout \(workspace.layout.kind.rawValue) tiled \(workspace.layout.windows)\(model.isVisible(workspace.id) ? " (visible)" : "")")
+            if !model.isVisible(workspace.id) {
+                for (id, frame) in model.layoutPreview(for: workspace.id).sorted(by: { $0.key < $1.key }) {
+                    lines.append("    if shown: window \(id) at \(FrameApplier.describe(frame))")
+                }
+            }
         }
         let plan = model.computePlan()
         for window in model.windows.values.sorted(by: { $0.id < $1.id }) {

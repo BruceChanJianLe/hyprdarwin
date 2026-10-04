@@ -42,6 +42,8 @@ public final class WindowManager {
     public var cursor: CGPoint?
 
     var previousWorkspace: WorkspaceID?
+    /// Layouts chosen at runtime (cycle_layout); they outlive config reloads.
+    var layoutOverrides: [WorkspaceID: LayoutKind] = [:]
     /// Workspaces that moved off an unplugged monitor, by that monitor's
     /// name, and what it showed; they go back when it returns.
     var displacedWorkspaces: [WorkspaceID: String] = [:]
@@ -239,7 +241,7 @@ public final class WindowManager {
     @discardableResult
     func createWorkspace(_ id: WorkspaceID, on monitorID: MonitorID) -> Workspace {
         if let existing = workspaces[id] { return existing }
-        let kind = config.workspaceRule(for: id)?.layout ?? config.layout
+        let kind = layoutOverrides[id] ?? config.workspaceRule(for: id)?.layout ?? config.layout
         let workspace = Workspace(id: id, monitorID: monitorID, layout: WorkspaceLayout(kind: kind, options: config.layoutOptions))
         workspaces[id] = workspace
         emit(.createWorkspace(id))
@@ -260,6 +262,7 @@ public final class WindowManager {
             guard !isVisible(id), config.workspaceRule(for: id)?.persistent != true else { continue }
             guard !windows.values.contains(where: { $0.workspace == id }) else { continue }
             workspaces[id] = nil
+            layoutOverrides[id] = nil
             emit(.destroyWorkspace(id))
         }
     }
@@ -270,7 +273,7 @@ public final class WindowManager {
         let old = config
         config = newConfig
         for (id, workspace) in workspaces {
-            let kind = newConfig.workspaceRule(for: id)?.layout ?? newConfig.layout
+            let kind = layoutOverrides[id] ?? newConfig.workspaceRule(for: id)?.layout ?? newConfig.layout
             var layout = workspace.layout
             if layout.kind != kind, let area = tilingArea(for: id) {
                 layout = layout.converted(to: kind, area: area, options: newConfig.layoutOptions)
@@ -285,6 +288,9 @@ public final class WindowManager {
                 layout = .master(master)
             }
             workspaces[id]?.layout = layout
+        }
+        for window in windows.values where newConfig.unmanagedApps.contains(window.info.bundleID) {
+            removeWindow(window.id)
         }
         for id in windows.keys { applyDynamicRules(to: id) }
         if !submap.isEmpty && !newConfig.submaps.contains(submap) {
@@ -301,6 +307,7 @@ public final class WindowManager {
     /// already open when hyprdarwin started or regained management.
     @discardableResult
     public func addWindow(_ info: WindowInfo, isNew: Bool) -> [Effect] {
+        guard !config.unmanagedApps.contains(info.bundleID) else { return [] }
         if windows[info.id] != nil {
             updateInfo(info)
             return []
@@ -352,7 +359,9 @@ public final class WindowManager {
         }
         emit(.openWindow(info.id, workspace: window.workspace, bundleID: info.bundleID, title: info.title))
 
-        guard isNew, effects.noInitialFocus != true else { return [] }
+        // misc.focus_on_open = false (the default): new windows never take
+        // focus or switch workspaces; the user stays where they are
+        guard isNew, config.focusOnOpen, effects.noInitialFocus != true else { return [] }
         if silent && !isVisible(window.workspace) {
             workspaces[window.workspace]?.lastFocused = info.id
             return []
@@ -578,6 +587,13 @@ public final class WindowManager {
     }
 
     // MARK: - Plan
+
+    /// Where the tiled windows of `id` would go if it were shown (the state
+    /// dump uses it to check hidden workspaces without showing them).
+    public func layoutPreview(for id: WorkspaceID) -> [WindowID: CGRect] {
+        guard let workspace = workspaces[id], let area = tilingArea(for: id) else { return [:] }
+        return Gaps.apply(workspace.layout.frames(in: area, options: config.layoutOptions), area: area, gapsIn: gapsIn(for: id))
+    }
 
     /// Where every window should be right now.
     public func computePlan() -> Plan {

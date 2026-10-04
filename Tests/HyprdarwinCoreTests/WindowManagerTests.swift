@@ -18,6 +18,8 @@ private func info(_ id: WindowID, bundle: String = "com.example.app", title: Str
 
 private func makeManager(_ configure: (inout Config) -> Void = { _ in }, monitors: [Monitor] = [primary]) -> WindowManager {
     var config = Config()
+    // most scenarios here are about focus moving with new windows
+    config.focusOnOpen = true
     config.gapsIn = Insets(all: 0)
     config.gapsOut = Insets(all: 0)
     configure(&config)
@@ -448,5 +450,70 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(plan.frame(of: 2)?.size == CGSize(width: 500, height: 388))
         #expect(plan.frame(of: 3)?.size == CGSize(width: 250, height: 388))
         #expect(plan.frame(of: 4)?.size == CGSize(width: 250, height: 388))
+    }
+
+    @Test func newWindowsOpenSilentlyByDefault() throws {
+        let manager = makeManager { config in
+            config.focusOnOpen = false
+            config.windowRules = [try! rule { match, effects in
+                match.title = try RulePattern("^Mail")
+                effects.workspace = WorkspaceTarget(parsing: "6")
+            }]
+        }
+        #expect(manager.addWindow(info(1), isNew: true).isEmpty)
+        #expect(manager.focusedWindow == nil)
+        manager.externalFocus(1)
+        #expect(manager.addWindow(info(2), isNew: true).isEmpty)
+        #expect(manager.focusedWindow == 1, "focus stays put")
+        #expect(manager.computePlan().frame(of: 2)?.width == 500, "but the window still tiles")
+        #expect(manager.addWindow(info(3, title: "Mail - Inbox"), isNew: true).isEmpty)
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1), "a non-silent rule does not switch either")
+        #expect(manager.windows[3]?.workspace == .numbered(6))
+    }
+
+    @Test func focusOnOpenFollowsNewWindows() throws {
+        let manager = makeManager { config in
+            config.focusOnOpen = true
+            config.windowRules = [try! rule { match, effects in
+                match.title = try RulePattern("^Mail")
+                effects.workspace = WorkspaceTarget(parsing: "6")
+            }]
+        }
+        #expect(manager.addWindow(info(1), isNew: true) == [.focus(1)])
+        #expect(manager.addWindow(info(3, title: "Mail - Inbox"), isNew: true) == [.focus(3)])
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(6))
+    }
+
+    @Test func unmanagedAppsAreNeverTouched() {
+        let manager = makeManager { $0.unmanagedApps = ["com.mitchellh.ghostty"] }
+        #expect(manager.addWindow(info(1, bundle: "com.mitchellh.ghostty"), isNew: true).isEmpty)
+        #expect(manager.windows[1] == nil)
+        #expect(manager.externalFocus(1).isEmpty)
+        manager.addWindow(info(2), isNew: true)
+        var config = manager.config
+        config.unmanagedApps = ["com.example.app"]
+        manager.setConfig(config)
+        #expect(manager.windows[2] == nil, "becoming unmanaged releases the window")
+    }
+
+    @Test func cycleLayoutSurvivesReloads() {
+        let manager = makeManager()
+        for id: WindowID in 1...3 { manager.addWindow(info(id), isNew: true) }
+        manager.dispatch(.cycleLayout)
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .master)
+        #expect(manager.computePlan().frame(of: 1)?.width == 550)
+        manager.setConfig(manager.config)
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .master)
+        manager.dispatch(.cycleLayout)
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .dwindle)
+    }
+
+    @Test func layoutPreviewForHiddenWorkspaces() {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.dispatch(.focusWorkspace(.id(.numbered(2)), onCurrentMonitor: false))
+        #expect(manager.layoutPreview(for: .numbered(1))[2] == CGRect(x: 500, y: 25, width: 500, height: 775))
+        if case .hidden = manager.computePlan().placements[2] {} else { Issue.record("workspace 1 is hidden") }
     }
 }

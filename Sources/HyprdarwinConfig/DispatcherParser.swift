@@ -42,10 +42,11 @@ enum DispatcherParser {
     ]
 
     static func parse(_ name: String, _ args: [LuaValue]) -> Result<Outcome, ConfigError> {
+        let display = name.hasPrefix("hd.") ? "hd.dsp.\(name.dropFirst(3))" : "hl.dsp.\(name)"
         let first = args.first ?? .none
         let table = first.tableValue ?? LuaTable()
         func fail(_ message: String) -> Result<Outcome, ConfigError> {
-            .failure(ConfigError("hl.dsp.\(name): \(message)"))
+            .failure(ConfigError("\(display): \(message)"))
         }
         func ok(_ dispatcher: Dispatcher, _ notes: [String] = []) -> Result<Outcome, ConfigError> {
             .success(Outcome(dispatcher: dispatcher, notes: notes))
@@ -53,7 +54,7 @@ enum DispatcherParser {
         func notes(ignoring keys: Set<String>) -> [String] {
             var result: [String] = []
             if table["window"] != .none && !keys.contains("window") {
-                result.append("hl.dsp.\(name): the window argument is not supported yet; the focused window is used")
+                result.append("\(display): the window argument is not supported yet; the focused window is used")
             }
             return result
         }
@@ -63,7 +64,7 @@ enum DispatcherParser {
         }
 
         if let reason = unsupported[name] {
-            return ok(.noOp, ["hl.dsp.\(name): \(reason) (ignored on hyprdarwin)"])
+            return ok(.noOp, ["\(display): \(reason) (ignored on hyprdarwin)"])
         }
 
         switch name {
@@ -169,6 +170,9 @@ enum DispatcherParser {
         case "window.center":
             return ok(.center, notes(ignoring: []))
 
+        case "hd.cycle_layout":
+            return ok(.cycleLayout)
+
         case "workspace.toggle_special":
             return ok(.toggleSpecial(first.text ?? ""))
         case "workspace.move":
@@ -184,9 +188,9 @@ enum DispatcherParser {
 
         default:
             if name.hasPrefix("group.") || name.hasPrefix("cursor.") {
-                return ok(.noOp, ["hl.dsp.\(name) is not supported on hyprdarwin (ignored)"])
+                return ok(.noOp, ["\(display) is not supported on hyprdarwin (ignored)"])
             }
-            var outcome = Outcome(dispatcher: .noOp, notes: ["hl.dsp.\(name) is not a known dispatcher (ignored)"])
+            var outcome = Outcome(dispatcher: .noOp, notes: ["\(display) is not a known dispatcher (ignored)"])
             outcome.isUnknown = true
             return .success(outcome)
         }
