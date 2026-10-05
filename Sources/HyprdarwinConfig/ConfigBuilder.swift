@@ -218,18 +218,6 @@ struct ConfigBuilder {
                     throw ConfigError("\(location) hd.config unmanaged_apps: expected a list of bundle ids, e.g. { \"com.mitchellh.ghostty\" }")
                 }
                 config.unmanagedApps = Set(list.array.compactMap(\.text))
-            case "layout_cycle":
-                guard let list = value.tableValue, list.fields.isEmpty, !list.array.isEmpty else {
-                    throw ConfigError("\(location) hd.config layout_cycle: expected a list of layouts, e.g. { \"dwindle\", \"tiled\" }")
-                }
-                var cycle: [LayoutKind] = []
-                for entry in list.array {
-                    guard let text = entry.text, let kind = LayoutKind(rawValue: text) else {
-                        throw ConfigError("\(location) hd.config layout_cycle: \(Self.render(entry)) is not a layout (\(Self.layoutNames))")
-                    }
-                    cycle.append(kind)
-                }
-                config.layoutCycle = cycle
             case "hide_corner":
                 guard let text = value.text, let corner = HideCorner(rawValue: text) else {
                     throw ConfigError("\(location) hd.config hide_corner: expected \"bottom-right\" or \"bottom-left\"")

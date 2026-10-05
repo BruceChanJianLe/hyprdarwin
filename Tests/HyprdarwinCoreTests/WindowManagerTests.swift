@@ -646,15 +646,11 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.workspaces[.numbered(1)]?.layout.kind == .mainVerticalMirrored, "a chosen main-* keeps its side")
     }
 
-    @Test func cycleLayoutUsesTheConfiguredLoop() {
-        let manager = makeManager { $0.layoutCycle = [.master, .tiled] }
+    @Test func cycleLayoutFromMasterContinuesAtItsSide() {
+        let manager = makeManager { $0.layout = .master; $0.layoutOptions.master.orientation = .top }
         for id: WindowID in 1...3 { manager.addWindow(info(id), isNew: true) }
         manager.dispatch(.cycleLayout(reverse: false))
-        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .mainVertical, "dwindle is not in the loop: start at its first entry")
-        manager.dispatch(.cycleLayout(reverse: false))
-        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .tiled)
-        manager.dispatch(.cycleLayout(reverse: false))
-        #expect(manager.workspaces[.numbered(1)]?.layout.isKind(.master) == true)
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .mainHorizontalMirrored, "master on top is main-horizontal")
     }
 
     @Test func liveLayoutsKeepTheirShapeAsWindowsComeAndGo() {

@@ -15,7 +15,7 @@ public enum LayoutKind: String, Sendable, CaseIterable {
     case mainVerticalMirrored = "main-vertical-mirrored"
     case tiled
 
-    /// hd.dsp.cycle_layout's default loop: dwindle, then tmux's next-layout order.
+    /// hd.dsp.cycle_layout's loop: dwindle, then tmux's next-layout order.
     public static let defaultCycle: [LayoutKind] = [
         .dwindle, .evenHorizontal, .evenVertical, .mainHorizontal, .mainHorizontalMirrored,
         .mainVertical, .mainVerticalMirrored, .tiled,

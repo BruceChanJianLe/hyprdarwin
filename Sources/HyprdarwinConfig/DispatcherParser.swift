@@ -183,8 +183,8 @@ enum DispatcherParser {
         case "hd.cycle_layout":
             let direction = first.text ?? table["direction"].text ?? "next"
             switch direction {
-            case "next", "+1": return ok(.cycleLayout(reverse: false))
-            case "prev", "previous", "-1": return ok(.cycleLayout(reverse: true))
+            case "next": return ok(.cycleLayout(reverse: false))
+            case "prev": return ok(.cycleLayout(reverse: true))
             default: return fail("direction must be \"next\" or \"prev\"")
             }
         case "hd.retile":

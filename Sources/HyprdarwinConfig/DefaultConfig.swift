@@ -74,9 +74,6 @@ if hd then
         hide_corner = "bottom-right", -- where hidden workspaces' windows are parked
         border_radius = 12,           -- corner radius of the borders, to match macOS windows
         -- unmanaged_apps = { "com.mitchellh.ghostty" }, -- bundle ids hyprdarwin never moves
-        -- the layouts HYPR + SHIFT + SPACE loops through (default: dwindle, then tmux's order)
-        -- layout_cycle = { "dwindle", "even-horizontal", "even-vertical", "main-horizontal",
-        --                  "main-horizontal-mirrored", "main-vertical", "main-vertical-mirrored", "tiled" },
     })
 end
 
@@ -107,8 +104,8 @@ hl.bind(mod .. " + SPACE",  hl.dsp.layout("togglesplit"),              { descrip
 hl.bind(mod .. " + SHIFT + RETURN", hl.dsp.layout("swapwithmaster"),   { description = "Swap with master (master)" })
 hl.bind(mod .. " + CTRL + R", hl.dsp.reload_config(),                  { description = "Reload config" })
 if hd then
-    -- hyprdarwin-only: this workspace takes the next layout of layout_cycle, like
-    -- tmux's next-layout; hd.dsp.cycle_layout({ direction = "prev" }) goes back
+    -- hyprdarwin-only: this workspace takes the next layout (dwindle, then tmux's
+    -- next-layout order); hd.dsp.cycle_layout({ direction = "prev" }) goes back
     hl.bind(mod .. " + SHIFT + SPACE", hd.dsp.cycle_layout(), { description = "Next layout" })
     -- re-tile: reapply the window rules to every window, rebuild every
     -- layout with even splits and put every window back in its place

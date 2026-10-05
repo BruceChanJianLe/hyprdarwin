@@ -44,7 +44,7 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
     case moveWorkspaceToMonitor(WorkspaceSelector?, MonitorSelector)
     case layoutMessage(String)
     /// hd.dsp.cycle_layout: the focused workspace takes the next (or
-    /// previous) layout of hd.config layout_cycle, like tmux's next-layout.
+    /// previous) layout of `LayoutKind.defaultCycle`, like tmux's next-layout.
     case cycleLayout(reverse: Bool)
     /// hd.dsp.retile: reapply window rules to every window, rebuild every
     /// workspace's layout with even splits and rewrite every frame.

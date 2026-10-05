@@ -81,15 +81,10 @@ extension WindowManager {
         case .layoutMessage(let message):
             return layoutMessage(message)
         case .cycleLayout(let reverse):
-            guard let id = focusedWorkspaceID, let workspace = workspaces[id], let area = tilingArea(for: id) else { return [] }
-            let cycle = config.layoutCycle.isEmpty ? LayoutKind.defaultCycle : config.layoutCycle
-            // from a layout outside the loop, start at its first (or last) entry, as tmux does
-            let next: LayoutKind
-            if let index = cycle.firstIndex(where: workspace.layout.isKind) {
-                next = cycle[((index + (reverse ? -1 : 1)) % cycle.count + cycle.count) % cycle.count]
-            } else {
-                next = reverse ? cycle.last! : cycle.first!
-            }
+            let cycle = LayoutKind.defaultCycle
+            guard let id = focusedWorkspaceID, let workspace = workspaces[id], let area = tilingArea(for: id),
+                  let index = cycle.firstIndex(of: workspace.layout.kind) else { return [] }
+            let next = cycle[(index + (reverse ? cycle.count - 1 : 1)) % cycle.count]
             layoutOverrides[id] = next
             workspaces[id]?.layout = workspace.layout.converted(to: next, area: area, options: config.layoutOptions)
             return []
