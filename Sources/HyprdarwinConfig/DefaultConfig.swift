@@ -97,10 +97,13 @@ hl.bind(mod .. " + SHIFT + F", hl.dsp.window.fullscreen(),                      
 hl.bind(mod .. " + C",      hl.dsp.window.center(),                    { description = "Center floating window" })
 hl.bind(mod .. " + SPACE",  hl.dsp.layout("togglesplit"),              { description = "Toggle split (dwindle)" })
 hl.bind(mod .. " + SHIFT + RETURN", hl.dsp.layout("swapwithmaster"),   { description = "Swap with master (master)" })
-hl.bind(mod .. " + SHIFT + R", hl.dsp.reload_config(),                 { description = "Reload config" })
+hl.bind(mod .. " + CTRL + R", hl.dsp.reload_config(),                  { description = "Reload config" })
 if hd then
-    -- this workspace switches between dwindle and master (hyprdarwin-only)
+    -- hyprdarwin-only: this workspace switches between dwindle and master
     hl.bind(mod .. " + SHIFT + SPACE", hd.dsp.cycle_layout(), { description = "Cycle layout (dwindle / master)" })
+    -- re-tile: reapply the window rules to every window, rebuild every
+    -- layout with even splits and put every window back in its place
+    hl.bind(mod .. " + R", hd.dsp.retile(), { description = "Re-tile" })
 end
 
 -- Vim-style focus (h/j/k/l), swap (SHIFT) and move (CTRL); the arrow keys work too.
@@ -123,16 +126,20 @@ for i = 1, 10 do
     hl.bind(mod .. " + SHIFT + " .. key,        hl.dsp.window.move({ workspace = i }))
     hl.bind(mod .. " + CTRL + SHIFT + " .. key, hl.dsp.window.move({ workspace = i, follow = false }))
 end
-hl.bind(mod .. " + TAB",          hl.dsp.focus({ workspace = "previous" }), { description = "Previous workspace" })
-hl.bind(mod .. " + bracketright", hl.dsp.focus({ workspace = "e+1" }),      { description = "Next workspace" })
-hl.bind(mod .. " + bracketleft",  hl.dsp.focus({ workspace = "e-1" }),      { description = "Previous existing workspace" })
+-- N / P: next / previous workspace that has windows; ] / [: next / previous
+-- workspace on this monitor, empty ones included.
+hl.bind(mod .. " + N",            hl.dsp.focus({ workspace = "e+1" }), { description = "Next workspace with windows" })
+hl.bind(mod .. " + P",            hl.dsp.focus({ workspace = "e-1" }), { description = "Previous workspace with windows" })
+hl.bind(mod .. " + bracketright", hl.dsp.focus({ workspace = "r+1" }), { description = "Next workspace" })
+hl.bind(mod .. " + bracketleft",  hl.dsp.focus({ workspace = "r-1" }), { description = "Previous workspace" })
 
 -- Scratchpad (special workspace).
 hl.bind(mod .. " + S",         hl.dsp.workspace.toggle_special("scratch"),             { description = "Toggle scratchpad" })
 hl.bind(mod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:scratch" }), { description = "Move to scratchpad" })
 
--- Resize mode: HYPR + R, then arrows; Escape or Return leaves.
-hl.bind(mod .. " + R", hl.dsp.submap("resize"), { description = "Resize mode" })
+-- Resize mode: HYPR + SHIFT + R, then arrows; Escape or Return leaves. The
+-- menu bar shows RESIZE while it is active.
+hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"), { description = "Resize mode" })
 hl.define_submap("resize", function()
     hl.bind("right",  hl.dsp.window.resize({ x =  40, y =   0, relative = true }), { repeating = true })
     hl.bind("left",   hl.dsp.window.resize({ x = -40, y =   0, relative = true }), { repeating = true })

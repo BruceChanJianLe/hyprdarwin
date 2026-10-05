@@ -26,6 +26,11 @@ sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist >
 cp Sources/CLua/LICENSE "$APP/Contents/Resources/LICENSE-lua.txt"
 cp THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
+# app icon from the SVG; the menu bar icon is drawn from its SVG at runtime
+rm -rf build/AppIcon.iconset
+swift scripts/render-icon.swift Resources/hyprdarwin-icon.svg build/AppIcon.iconset
+iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/hyprdarwin-menubar.svg "$APP/Contents/Resources/MenuBarIcon.svg"
 
 set -- --force --timestamp=none --identifier io.github.brucechanjianle.hyprdarwin
 if [ -n "${HYPRDARWIN_KEYCHAIN:-}" ]; then

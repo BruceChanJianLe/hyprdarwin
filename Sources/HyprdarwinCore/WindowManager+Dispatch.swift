@@ -87,6 +87,8 @@ extension WindowManager {
             layoutOverrides[id] = next
             workspaces[id]?.layout = workspace.layout.converted(to: next, area: area, options: config.layoutOptions)
             return []
+        case .retile:
+            return retile()
         case .submap(let name):
             let target = (name == "reset" || name.isEmpty) ? "" : name
             guard target.isEmpty || config.submaps.contains(target) else {
@@ -117,6 +119,18 @@ extension WindowManager {
             return id
         case .relative(let delta):
             return .numbered(max(1, currentNumber + delta))
+        case .relativeOnMonitor(let delta):
+            let monitorID = focusedMonitor?.id
+            let elsewhere = Set(workspaces.values.filter { $0.monitorID != monitorID }.compactMap(\.id.number))
+            let step = delta >= 0 ? 1 : -1
+            var number = currentNumber
+            for _ in 0..<abs(delta) {
+                var next = number + step
+                while next >= 1 && elsewhere.contains(next) { next += step }
+                guard next >= 1 else { break }
+                number = next
+            }
+            return .numbered(number)
         case .existing(let delta), .existingOnMonitor(let delta):
             var existing = Set(workspaces.keys.compactMap(\.number))
             if case .existingOnMonitor = selector {
@@ -320,6 +334,41 @@ extension WindowManager {
         collectGarbage()
         if let window = workspaces[id]?.lastFocused { return focus(window, warp: true) }
         return []
+    }
+
+    /// hd.dsp.retile: every window gets its window rules again as if it had
+    /// just opened (float or tile, workspace, floating size and position,
+    /// fullscreen, tags, borders), then every workspace's layout is rebuilt
+    /// from its tiled windows, in their current order, with default splits.
+    func retile() -> [Effect] {
+        var effects: [Effect] = []
+        for id in windows.keys.sorted() {
+            guard let window = windows[id] else { continue }
+            let rules = RuleEngine.effects(for: window, rules: config.windowRules)
+            windows[id]?.tags = Set(rules.tags)
+            // windows the app does not let us resize always float
+            if let float = window.info.isResizable ? rules.float : true { setFloating(id, float) }
+            if let mode = rules.fullscreen, window.fullscreen != mode {
+                exitFullscreen(on: window.workspace)
+                windows[id]?.fullscreen = mode
+            }
+            if let target = rules.workspace?.workspace, target != window.workspace {
+                effects += move(id, to: target, follow: false)
+            }
+            if rules.size != nil || rules.move != nil || rules.center == true, let current = windows[id],
+               let monitor = workspaces[current.workspace].flatMap({ self.monitor(id: $0.monitorID) }) {
+                windows[id]?.floatingFrame = initialFloatingFrame(for: current, effects: rules, on: monitor)
+            }
+            applyDynamicRules(to: id)
+        }
+        for (id, workspace) in workspaces {
+            guard let area = tilingArea(for: id) else { continue }
+            let tiled = Set(windows.values.filter { $0.workspace == id && !$0.isFloating }.map(\.id))
+            let order = workspace.layout.windows.filter(tiled.contains) + tiled.subtracting(workspace.layout.windows).sorted()
+            workspaces[id]?.layout = workspace.layout.rebuilt(order, area: area, options: config.layoutOptions)
+        }
+        effects.append(.rewriteAll)
+        return effects
     }
 
     func layoutMessage(_ message: String) -> [Effect] {

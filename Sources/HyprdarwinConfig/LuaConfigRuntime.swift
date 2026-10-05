@@ -186,6 +186,7 @@ public final class LuaConfigRuntime {
         setBuiltin("config", .macConfig)
         hd_newtable(L)
         setBuiltin("cycle_layout", .dispatcher, "hd.cycle_layout")
+        setBuiltin("retile", .dispatcher, "hd.retile")
         namespaceIndexMetatable(prefix: "hd.")
         lua_setfield(L, -2, "dsp")
         lua_pushstring(L, "0.1.0")

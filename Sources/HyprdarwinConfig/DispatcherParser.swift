@@ -172,6 +172,8 @@ enum DispatcherParser {
 
         case "hd.cycle_layout":
             return ok(.cycleLayout)
+        case "hd.retile":
+            return ok(.retile)
 
         case "workspace.toggle_special":
             return ok(.toggleSpecial(first.text ?? ""))

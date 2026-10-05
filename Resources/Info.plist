@@ -8,6 +8,8 @@
 	<string>hyprdarwin</string>
 	<key>CFBundleExecutable</key>
 	<string>hyprdarwin</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.github.brucechanjianle.hyprdarwin</string>
 	<key>CFBundleInfoDictionaryVersion</key>

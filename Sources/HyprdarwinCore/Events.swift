@@ -15,6 +15,8 @@ public enum Effect: Equatable, Sendable {
     /// The active submap changed ("" is the global map).
     case submap(String)
     case reload
+    /// Forget what was written and rewrite every window (re-tile).
+    case rewriteAll
     case exit
     /// A dispatcher could not run; worth a log line, not an alert.
     case failed(String)

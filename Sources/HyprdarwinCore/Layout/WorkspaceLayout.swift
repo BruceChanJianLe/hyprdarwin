@@ -59,13 +59,42 @@ public enum WorkspaceLayout: Equatable, Sendable {
     /// The same windows, in the same order, under another layout.
     public func converted(to kind: LayoutKind, area: CGRect, options: LayoutOptions) -> WorkspaceLayout {
         guard kind != self.kind else { return self }
-        var layout = WorkspaceLayout(kind: kind, options: options)
-        var previous: WindowID?
-        for id in windows {
-            layout.insert(id, focused: previous, area: area, options: options, cursor: nil)
-            previous = id
+        return Self.build(kind: kind, windows: windows, area: area, options: options)
+    }
+
+    /// A fresh layout of the same kind holding `windows` in that order, with
+    /// default split ratios and mfact (re-tile). Master keeps its orientation.
+    public func rebuilt(_ windows: [WindowID], area: CGRect, options: LayoutOptions) -> WorkspaceLayout {
+        var layout = Self.build(kind: kind, windows: windows, area: area, options: options)
+        if case .master(let old) = self, case .master(var fresh) = layout {
+            fresh.orientation = old.orientation
+            layout = .master(fresh)
         }
         return layout
+    }
+
+    /// `windows` laid out in order, as if each opened after the previous one
+    /// (dwindle's spiral), whatever force_split or new_status say.
+    static func build(kind: LayoutKind, windows: [WindowID], area: CGRect, options: LayoutOptions) -> WorkspaceLayout {
+        switch kind {
+        case .dwindle:
+            var dwindleOptions = options.dwindle
+            dwindleOptions.forceSplit = 2
+            var layout = DwindleLayout()
+            var previous: WindowID?
+            for id in windows {
+                layout.insert(id, nextTo: previous, area: area, options: dwindleOptions)
+                previous = id
+            }
+            return .dwindle(layout)
+        case .master:
+            var masterOptions = options.master
+            masterOptions.newStatus = .slave
+            masterOptions.newOnTop = false
+            var layout = MasterLayout(options: options.master)
+            for id in windows { layout.insert(id, focused: nil, options: masterOptions) }
+            return .master(layout)
+        }
     }
 
     public mutating func insert(

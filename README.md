@@ -1,3 +1,5 @@
+<p align="center"><img src="Resources/hyprdarwin-icon.svg" width="160" alt="hyprdarwin logo"></p>
+
 # hyprdarwin
 
 A personal, Hyprland-inspired tiling window manager for macOS.
@@ -92,6 +94,7 @@ hl.config({
 if hd then
     hd.config({ hypr_key = "caps_lock", hide_corner = "bottom-right" })
     hl.bind("HYPR + SHIFT + SPACE", hd.dsp.cycle_layout())   -- this workspace: dwindle <-> master
+    hl.bind("HYPR + R", hd.dsp.retile())                     -- reapply rules, re-tile everything
 end
 
 hl.workspace_rule({ workspace = "5", layout = "master" })
@@ -114,7 +117,7 @@ for i = 1, 10 do
 end
 hl.bind(mod .. " + ALT + 1", hl.dsp.focus({ workspace = 11 }))   -- workspaces have no upper limit
 
-hl.bind(mod .. " + R", hl.dsp.submap("resize"))
+hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"))
 hl.define_submap("resize", function()
     hl.bind("right",  hl.dsp.window.resize({ x = 40, y = 0, relative = true }), { repeating = true })
     hl.bind("left",   hl.dsp.window.resize({ x = -40, y = 0, relative = true }), { repeating = true })
@@ -130,7 +133,7 @@ hl.on("hyprland.start", function()
 end)
 ```
 
-The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE cycles the layout; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + R enters a resize submap, HYPR + S toggles the scratchpad, HYPR + F maximizes.
+The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE cycles the layout; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + N / P go to the next / previous workspace that has windows and HYPR + ] / [ to the next / previous one on this display, empty ones included; HYPR + R re-tiles, HYPR + SHIFT + R enters a resize submap, HYPR + CTRL + R reloads the config, HYPR + S toggles the scratchpad, HYPR + F maximizes. There is no HYPR + TAB bind: Caps Lock sits right next to Tab.
 
 ### API reference
 
@@ -194,8 +197,9 @@ Dispatchers (`hl.dsp.*`):
 | `layout(message)` | dwindle: `togglesplit`, `swapsplit`, `splitratio <delta>` / `splitratio exact <v>`; master: `swapwithmaster`, `focusmaster`, `addmaster`, `removemaster`, `mfact <delta>` / `mfact exact <v>`, `orientation{left,right,top,bottom,next,prev}`, `cyclenext`, `cycleprev`, `swapnext`, `swapprev`, `rollnext`, `rollprev` |
 | `submap(name)`, `reload_config()`, `exit()`, `no_op()` | `exit` quits hyprdarwin |
 | `hd.dsp.cycle_layout()` | hyprdarwin only: the focused workspace switches between dwindle and master (kept across reloads) |
+| `hd.dsp.retile()` | hyprdarwin only: re-tile. Every window gets its window rules again as if it had just opened (float or tile, `workspace` (silently), floating `size`/`move`/`center`, `fullscreen`, tags, borders; a window no rule decides keeps its floating state), every workspace's layout is rebuilt from its windows in their current order with default split ratios and mfact, and every window is written to its place again |
 
-Workspace selectors: `3`, `"special"`, `"special:name"`, `"+1"`/`"-1"` (relative number), `"e+1"`/`"e-1"` (next/previous existing), `"m+1"`/`"m-1"` (existing on this monitor), `"previous"`, `"empty"`. Monitor selectors: a name (or part of it), an index from the left, `"l"`/`"r"`/`"u"`/`"d"`, `"+1"`/`"-1"`, `"current"`.
+Workspace selectors: `3`, `"special"`, `"special:name"`, `"+1"`/`"-1"` (relative number), `"r+1"`/`"r-1"` (next/previous number on this monitor, empty ones included: numbers shown or kept on another monitor are skipped), `"e+1"`/`"e-1"` (next/previous existing), `"m+1"`/`"m-1"` (existing on this monitor), `"previous"`, `"empty"`. Monitor selectors: a name (or part of it), an index from the left, `"l"`/`"r"`/`"u"`/`"d"`, `"+1"`/`"-1"`, `"current"`.
 
 ### Window rules
 
@@ -216,7 +220,7 @@ Windows the app does not allow to be resized always float.
 
 ## Using it
 
-- **Menu bar**: the current workspace, Reload Config, Open Config, Show Errors, Pause/Resume, Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
+- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has Reload Config, Open Config, Show Errors, Pause/Resume, Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
 - **Workspaces** are virtual: windows on hidden workspaces are parked in the bottom-right corner of the right-most display with a 1 pt sliver left on screen. Use one macOS Space per display, and leave that corner free.
 - Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace. While `misc.focus_on_open` is off, the switch waits 0.4 s, so an app that opens a new window silently does not pull you over.
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.

@@ -309,6 +309,12 @@ final class AppController {
                 Log.info("submap: \(name.isEmpty ? "reset" : name)")
             case .reload:
                 reloadConfig()
+            case .rewriteAll:
+                // re-tile: write every window again, even ones the applier had
+                // accepted elsewhere, and re-list every app's windows
+                Log.info("re-tile: rewriting every window")
+                applier.reset()
+                source.refreshAll()
             case .exit:
                 NSApp.terminate(nil)
             case .failed(let message):

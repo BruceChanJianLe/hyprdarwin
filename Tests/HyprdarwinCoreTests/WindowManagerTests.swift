@@ -121,6 +121,76 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.resolve(workspace: .empty) == .numbered(2))
     }
 
+    @Test func relativeOnMonitorIncludesEmptyWorkspacesAndSkipsOtherMonitors() {
+        let manager = makeManager(monitors: [primary, external])
+        // workspace 2 is shown on the external monitor; 1 is focused here
+        #expect(manager.resolve(workspace: .relativeOnMonitor(1)) == .numbered(3), "2 lives on the other monitor")
+        #expect(manager.resolve(workspace: .relativeOnMonitor(2)) == .numbered(4))
+        #expect(manager.resolve(workspace: .relativeOnMonitor(-1)) == .numbered(1), "never below 1")
+        manager.dispatch(.focusWorkspace(.relativeOnMonitor(1), onCurrentMonitor: false))
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(3))
+        #expect(manager.resolve(workspace: .relativeOnMonitor(-1)) == .numbered(1))
+        // e+1 only visits workspaces that exist: 3 is empty but shown, so 1 is gone
+        #expect(manager.resolve(workspace: .existing(1)) == .numbered(2))
+    }
+
+    @Test func retileReappliesRulesAndRebuildsLayouts() throws {
+        let rules = try [
+            rule { match, effects in
+                match.class = try RulePattern("^com\\.example\\.float$")
+                effects.float = true
+                effects.center = true
+            },
+            rule { match, effects in
+                match.class = try RulePattern("^com\\.example\\.chat$")
+                effects.workspace = WorkspaceTarget(workspace: .numbered(3), silent: true)
+            },
+        ]
+        let manager = makeManager { config in
+            config.focusOnOpen = false
+            config.windowRules = rules
+        }
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.addWindow(info(3, bundle: "com.example.float", frame: CGRect(x: 0, y: 25, width: 200, height: 100)), isNew: true)
+        manager.addWindow(info(4, bundle: "com.example.chat"), isNew: true)
+        #expect(manager.windows[4]?.workspace == .numbered(3))
+        // the user tiles the floating window, moves the chat window here and resizes a split
+        manager.markFocused(3)
+        manager.dispatch(.float(.unset))
+        manager.markFocused(1)
+        manager.dispatch(.resize(x: 200, y: 0, relative: true))
+        manager.windows[4]?.workspace = .numbered(1)
+        manager.workspaces[.numbered(3)]?.layout.remove(4)
+        let area = try #require(manager.tilingArea(for: .numbered(1)))
+        manager.workspaces[.numbered(1)]?.layout.insert(4, focused: 1, area: area, options: manager.config.layoutOptions, cursor: nil)
+        manager.windows[3]?.floatingFrame = CGRect(x: 600, y: 600, width: 200, height: 100)
+
+        let effects = manager.dispatch(.retile)
+        #expect(effects.last == .rewriteAll)
+        #expect(manager.windows[3]?.isFloating == true, "float rule applies again")
+        #expect(manager.windows[3]?.floatingFrame == CGRect(x: 400, y: 363, width: 200, height: 100), "centred again")
+        #expect(manager.windows[4]?.workspace == .numbered(3), "workspace rule applies again, silently")
+        #expect(manager.monitorStates[1]?.activeWorkspace == .numbered(1))
+        // the remaining tiles are split evenly again, in their order
+        let plan = manager.computePlan()
+        #expect(plan.frame(of: 1) == CGRect(x: 0, y: 25, width: 500, height: 775))
+        #expect(plan.frame(of: 2) == CGRect(x: 500, y: 25, width: 500, height: 775))
+    }
+
+    @Test func retileKeepsWindowsNoRuleDecides() {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.dispatch(.float(.set))
+        manager.addWindow(info(3, resizable: false), isNew: true)
+        manager.dispatch(.retile)
+        #expect(manager.windows[1]?.isFloating == false)
+        #expect(manager.windows[2]?.isFloating == true, "floated by hand, no rule says otherwise")
+        #expect(manager.windows[3]?.isFloating == true, "not resizable: always floats")
+        #expect(manager.workspaces[.numbered(1)]?.layout.windows == [1])
+    }
+
     @Test func focusingAWorkspaceOnAnotherMonitorFocusesThatMonitor() {
         let manager = makeManager(monitors: [primary, external])
         manager.addWindow(info(1, frame: CGRect(x: 1200, y: 100, width: 400, height: 300)), isNew: false)
