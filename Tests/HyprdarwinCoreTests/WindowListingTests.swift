@@ -157,8 +157,36 @@ private func twoBraveWindows() -> (WindowManager, listed: Set<WindowID>) {
         #expect(probe.appsToRelist(listed: listed, onScreen: shown([2]), now: at(0.25)) == [brave])
         #expect(probe.appsToRelist(listed: listed, onScreen: shown([1, 2]), now: at(0.35)) == [safari])
         #expect(probe.appsToRelist(listed: listed, onScreen: shown([1, 2, 5]), now: at(0.5)).isEmpty)
-        // another Space: everything leaves the screen and each app re-lists
-        #expect(probe.appsToRelist(listed: listed, onScreen: [:], now: at(1)) == [brave, safari])
+    }
+
+    /// Leaving for another Space (an app's native fullscreen Space) takes
+    /// every listed window off screen at once: nothing is re-listed, and on
+    /// return the same list keeps each window's workspace and tile order.
+    @Test func leavingAndReturningToTheSpaceKeepsTheLayout() {
+        let manager = makeManager()
+        let listed = [window(1), window(2), window(3)]
+        manager.applyListing(listed, previous: [], initial: true)
+        manager.externalFocus(3)
+        _ = manager.dispatch(.moveToWorkspace(.id(.numbered(2)), follow: false))
+        let before = manager.workspaces.mapValues(\.layout.windows)
+        var probe = ListingProbe()
+        let ids: [Int32: Set<WindowID>] = [brave: [1, 2, 3]]
+        let shown: [WindowID: ScreenWindow] = [1: ScreenWindow(pid: brave), 2: ScreenWindow(pid: brave), 3: ScreenWindow(pid: brave)]
+        #expect(probe.appsToRelist(listed: ids, onScreen: shown, now: at(0)).isEmpty)
+        #expect(ticks(&probe, from: 0.25, to: 10, listed: ids, onScreen: [:]).isEmpty, "away: no re-list drops the windows")
+        #expect(ticks(&probe, from: 10.25, to: 12, listed: ids, onScreen: shown).isEmpty)
+        let changes = manager.applyListing(listed, previous: [1, 2, 3], initial: false)
+        #expect(changes.isEmpty, "nothing opens again")
+        #expect(manager.workspaces.mapValues(\.layout.windows) == before)
+        #expect(manager.windows[3]?.workspace == .numbered(2))
+    }
+
+    @Test func managedSpacesTrackEachDisplay() {
+        var spaces = ManagedSpaces()
+        let shown: [[String: UInt64]] = [["main": 1], ["main": 7], ["main": 1], ["main": 1, "external": 4],
+                                         ["main": 1, "external": 5], ["main": 1, "external": 4]]
+        // 7: an app's fullscreen Space; 4: a new display brings its Space
+        #expect(shown.map { spaces.isActive(current: $0) } == [true, false, true, true, false, true])
     }
 
     @Test func tabSwitchKeepsThePlace() {

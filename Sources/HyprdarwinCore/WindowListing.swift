@@ -87,8 +87,11 @@ public struct ListingProbe {
     /// list (empty when it lists none). A listed window off screen, or a
     /// normal-layer window on screen its app did not list, asks at once,
     /// again after each of `retryDelays` while it lasts, then not until it
-    /// has cleared.
+    /// has cleared. When every listed window leaves the screen at once, the
+    /// Space changed rather than windows closing: that tick asks nothing.
     public mutating func appsToRelist(listed: [Int32: Set<WindowID>], onScreen: [WindowID: ScreenWindow], now: Date) -> Set<Int32> {
+        let listedIDs = listed.values.flatMap { $0 }
+        if listedIDs.count > 1, !listedIDs.contains(where: { onScreen[$0] != nil }) { return [] }
         var disagreeing: [WindowID: Int32] = [:]
         for (pid, ids) in listed {
             for id in ids where onScreen[id] == nil { disagreeing[id] = pid }
@@ -107,5 +110,22 @@ public struct ListingProbe {
             asks[id] = ask
         }
         return pids
+    }
+}
+
+/// The macOS Space each display showed when management started, or when the
+/// display first appeared. Apps list only the windows on the current Space,
+/// so while a display shows another one (an app's native fullscreen Space,
+/// another desktop) their lists would drop every managed window.
+public struct ManagedSpaces {
+    private var spaces: [String: UInt64] = [:]
+
+    public init() {}
+
+    /// Whether every display shows its managed Space. `current` maps each
+    /// display to the Space it shows now.
+    public mutating func isActive(current: [String: UInt64]) -> Bool {
+        for (display, space) in current where spaces[display] == nil { spaces[display] = space }
+        return current.allSatisfy { spaces[$0.key] == $0.value }
     }
 }
