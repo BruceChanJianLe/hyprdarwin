@@ -24,7 +24,10 @@ local terminal = "open -na Ghostty || open -a Terminal"
 
 hl.config({
     general = {
-        layout   = "dwindle", -- "dwindle" or "master"; per workspace via hl.workspace_rule
+        -- "dwindle", "master", or one of tmux's: "even-horizontal", "even-vertical",
+        -- "main-horizontal", "main-horizontal-mirrored", "main-vertical",
+        -- "main-vertical-mirrored", "tiled"; per workspace via hl.workspace_rule
+        layout   = "dwindle",
         gaps_in  = 5,         -- between windows (each side), or "top right bottom left"
         gaps_out = 12,        -- around the screen edge
 
@@ -71,6 +74,9 @@ if hd then
         hide_corner = "bottom-right", -- where hidden workspaces' windows are parked
         border_radius = 12,           -- corner radius of the borders, to match macOS windows
         -- unmanaged_apps = { "com.mitchellh.ghostty" }, -- bundle ids hyprdarwin never moves
+        -- the layouts HYPR + SHIFT + SPACE loops through (default: dwindle, then tmux's order)
+        -- layout_cycle = { "dwindle", "even-horizontal", "even-vertical", "main-horizontal",
+        --                  "main-horizontal-mirrored", "main-vertical", "main-vertical-mirrored", "tiled" },
     })
 end
 
@@ -90,6 +96,8 @@ end
 hl.bind(mod .. " + RETURN", hl.dsp.exec_cmd(terminal),                 { description = "Terminal" })
 hl.bind(mod .. " + Q",      hl.dsp.window.close(),                     { description = "Close window" })
 hl.bind(mod .. " + V",      hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
+-- brings each floating window to the front in turn (windows too big to tile float too)
+hl.bind(mod .. " + SHIFT + V", hl.dsp.window.cycle_next({ floating = true }), { description = "Cycle floating windows" })
 -- "maximized" fills the tiling area (inside gaps_out); "fullscreen" the whole screen below the menu bar.
 -- Either way the workspace's other windows step aside until it ends.
 hl.bind(mod .. " + F",         hl.dsp.window.fullscreen({ mode = "maximized" }), { description = "Toggle maximized" })
@@ -99,8 +107,9 @@ hl.bind(mod .. " + SPACE",  hl.dsp.layout("togglesplit"),              { descrip
 hl.bind(mod .. " + SHIFT + RETURN", hl.dsp.layout("swapwithmaster"),   { description = "Swap with master (master)" })
 hl.bind(mod .. " + CTRL + R", hl.dsp.reload_config(),                  { description = "Reload config" })
 if hd then
-    -- hyprdarwin-only: this workspace switches between dwindle and master
-    hl.bind(mod .. " + SHIFT + SPACE", hd.dsp.cycle_layout(), { description = "Cycle layout (dwindle / master)" })
+    -- hyprdarwin-only: this workspace takes the next layout of layout_cycle, like
+    -- tmux's next-layout; hd.dsp.cycle_layout({ direction = "prev" }) goes back
+    hl.bind(mod .. " + SHIFT + SPACE", hd.dsp.cycle_layout(), { description = "Next layout" })
     -- re-tile: reapply the window rules to every window, rebuild every
     -- layout with even splits and put every window back in its place
     hl.bind(mod .. " + R", hd.dsp.retile(), { description = "Re-tile" })
@@ -165,6 +174,9 @@ hl.window_rule({ name = "float-pip", match = { title = "^Picture[- ]in[- ]Pictur
 -- Examples:
 -- hl.window_rule({ match = { class = "^com\\.tinyspeck\\.slackmacgap$" }, workspace = "3 silent" })
 -- hl.window_rule({ match = { class = "^com\\.apple\\.calculator$" }, float = true, center = true })
+-- Tiling gives windows at least the size their app accepts (hyprdarwin learns
+-- it the first time an app refuses to shrink); min_size asks for more:
+-- hl.window_rule({ match = { class = "^com\\.brave\\.Browser$" }, min_size = "800 500" })
 
 -----------------
 ---- AUTOSTART ---

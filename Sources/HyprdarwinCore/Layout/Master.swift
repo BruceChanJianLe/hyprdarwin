@@ -163,44 +163,76 @@ public struct MasterLayout: Equatable, Sendable {
 
     // MARK: - Geometry
 
-    public func frames(in area: CGRect) -> [WindowID: CGRect] {
+    /// Raw tile boxes covering `area`. `minimums` (per window, gaps
+    /// included) move the master/stack boundary and the boundaries inside
+    /// each stack so every window gets at least its minimum while they fit.
+    public func frames(in area: CGRect, minimums: [WindowID: CGSize] = [:]) -> [WindowID: CGRect] {
         guard !windows.isEmpty else { return [:] }
         let masters = Array(windows.prefix(effectiveMasterCount))
         let slaves = Array(windows.dropFirst(effectiveMasterCount))
+        // left/right stacks run top to bottom; top/bottom stacks run left to right
+        let stackVertically = orientation == .left || orientation == .right
         var masterArea = area
         var slaveArea = CGRect.zero
         if !slaves.isEmpty {
+            let total = stackVertically ? area.width : area.height
+            var length = total * mfact
+            if !minimums.isEmpty {
+                let across = { (ids: [WindowID]) in Self.minimum(of: ids, minimums: minimums, vertical: stackVertically) }
+                let master = across(masters), slave = across(slaves)
+                length = Space.split(total, desired: length, minimums: stackVertically ? (master.width, slave.width) : (master.height, slave.height))
+            }
             switch orientation {
             case .left:
-                masterArea = CGRect(x: area.minX, y: area.minY, width: area.width * mfact, height: area.height)
-                slaveArea = CGRect(x: masterArea.maxX, y: area.minY, width: area.width - masterArea.width, height: area.height)
+                masterArea = CGRect(x: area.minX, y: area.minY, width: length, height: area.height)
+                slaveArea = CGRect(x: masterArea.maxX, y: area.minY, width: area.width - length, height: area.height)
             case .right:
-                let w = area.width * mfact
-                masterArea = CGRect(x: area.maxX - w, y: area.minY, width: w, height: area.height)
-                slaveArea = CGRect(x: area.minX, y: area.minY, width: area.width - w, height: area.height)
+                masterArea = CGRect(x: area.maxX - length, y: area.minY, width: length, height: area.height)
+                slaveArea = CGRect(x: area.minX, y: area.minY, width: area.width - length, height: area.height)
             case .top:
-                masterArea = CGRect(x: area.minX, y: area.minY, width: area.width, height: area.height * mfact)
-                slaveArea = CGRect(x: area.minX, y: masterArea.maxY, width: area.width, height: area.height - masterArea.height)
+                masterArea = CGRect(x: area.minX, y: area.minY, width: area.width, height: length)
+                slaveArea = CGRect(x: area.minX, y: masterArea.maxY, width: area.width, height: area.height - length)
             case .bottom:
-                let h = area.height * mfact
-                masterArea = CGRect(x: area.minX, y: area.maxY - h, width: area.width, height: h)
-                slaveArea = CGRect(x: area.minX, y: area.minY, width: area.width, height: area.height - h)
+                masterArea = CGRect(x: area.minX, y: area.maxY - length, width: area.width, height: length)
+                slaveArea = CGRect(x: area.minX, y: area.minY, width: area.width, height: area.height - length)
             }
         }
-        // left/right stacks run top to bottom; top/bottom stacks run left to right
-        let stackVertically = orientation == .left || orientation == .right
         var result: [WindowID: CGRect] = [:]
-        for (id, frame) in zip(masters, Self.stack(masterArea, count: masters.count, vertical: stackVertically)) {
-            result[id] = frame
-        }
-        for (id, frame) in zip(slaves, Self.stack(slaveArea, count: slaves.count, vertical: stackVertically)) {
-            result[id] = frame
+        for (ids, box) in [(masters, masterArea), (slaves, slaveArea)] {
+            for (id, frame) in zip(ids, Self.stack(box, windows: ids, vertical: stackVertically, minimums: minimums)) {
+                result[id] = frame
+            }
         }
         return result
     }
 
-    static func stack(_ area: CGRect, count: Int, vertical: Bool) -> [CGRect] {
+    /// The smallest area every window fits in at its minimum.
+    public func minimumSize(minimums: [WindowID: CGSize]) -> CGSize {
+        let vertical = orientation == .left || orientation == .right
+        let master = Self.minimum(of: Array(windows.prefix(effectiveMasterCount)), minimums: minimums, vertical: vertical)
+        let slave = Self.minimum(of: Array(windows.dropFirst(effectiveMasterCount)), minimums: minimums, vertical: vertical)
+        if vertical {
+            return CGSize(width: master.width + slave.width, height: max(master.height, slave.height))
+        }
+        return CGSize(width: max(master.width, slave.width), height: master.height + slave.height)
+    }
+
+    /// A stack's minimum: lengths add up along it, the widest decides across.
+    static func minimum(of ids: [WindowID], minimums: [WindowID: CGSize], vertical: Bool) -> CGSize {
+        let sizes = ids.map { minimums[$0] ?? .zero }
+        if vertical {
+            return CGSize(width: sizes.map(\.width).max() ?? 0, height: sizes.reduce(0) { $0 + $1.height })
+        }
+        return CGSize(width: sizes.reduce(0) { $0 + $1.width }, height: sizes.map(\.height).max() ?? 0)
+    }
+
+    static func stack(_ area: CGRect, windows ids: [WindowID], vertical: Bool, minimums: [WindowID: CGSize]) -> [CGRect] {
+        let count = ids.count
         guard count > 0 else { return [] }
+        let needed = ids.map { id -> Double in vertical ? minimums[id]?.height ?? 0 : minimums[id]?.width ?? 0 }
+        if let lengths = Space.distribute(vertical ? area.height : area.width, weights: Array(repeating: 1, count: count), minimums: needed) {
+            return Space.slices(area, lengths: lengths, vertical: vertical)
+        }
         return (0..<count).map { index in
             if vertical {
                 let h = area.height / Double(count)

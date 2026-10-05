@@ -104,6 +104,8 @@ public struct WindowRuleEffects: Sendable {
     public var monitor: MonitorSelector?
     public var size: String?
     public var move: String?
+    /// Smallest tile size, "w h" expressions like `size`.
+    public var minSize: String?
     public var center: Bool?
     public var fullscreen: FullscreenMode?
     public var noInitialFocus: Bool?
@@ -121,6 +123,7 @@ public struct WindowRuleEffects: Sendable {
         if let v = later.monitor { monitor = v }
         if let v = later.size { size = v }
         if let v = later.move { move = v }
+        if let v = later.minSize { minSize = v }
         if let v = later.center { center = v }
         if let v = later.fullscreen { fullscreen = v }
         if let v = later.noInitialFocus { noInitialFocus = v }

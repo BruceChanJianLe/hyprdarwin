@@ -134,6 +134,8 @@ public struct Config: Sendable {
     public var unmanagedApps: Set<String> = []
     public var hyprKey = HyprKeyMode.capsLock
     public var hideCorner = HideCorner.bottomRight
+    /// hd.config layout_cycle: the layouts hd.dsp.cycle_layout loops through.
+    public var layoutCycle = LayoutKind.defaultCycle
 
     public var binds: [Keybind] = []
     public var submaps: Set<String> = []

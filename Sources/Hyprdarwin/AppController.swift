@@ -88,6 +88,7 @@ final class AppController {
         updateCapsRemap()
         applier.onFloatingMoved = { [weak self] id, frame in self?.model.floatingWindowMoved(id, frame: frame) }
         applier.onUserDrop = { [weak self] id, point in self?.dropped(id, at: point) ?? false }
+        applier.onSizeRefused = { [weak self] id, wanted in self?.sizeRefused(id, wanted: wanted) }
         input.onBind = { [weak self] index in self?.runBind(index) }
         input.start()
         source.onEvent = { [weak self] event in self?.handle(event) }
@@ -420,6 +421,23 @@ final class AppController {
         }
     }
 
+    /// An app kept a window larger than asked. Readback right after a write
+    /// can be stale, so look again once the window has settled (resize
+    /// notifications keep its frame current) before taking it as a minimum.
+    private func sizeRefused(_ id: WindowID, wanted: CGSize) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.managing, !self.paused, let window = self.model.windows[id], !window.isFloating else { return }
+            let actual = window.info.frame.size
+            let slack = FrameApplier.refusalSlack
+            let minimum = CGSize(width: actual.width > wanted.width + slack ? actual.width : 0,
+                                 height: actual.height > wanted.height + slack ? actual.height : 0)
+            guard minimum != .zero, self.model.windowRefusedSize(id, minimum: minimum) else { return }
+            let limits = [minimum.width > 0 ? "\(Int(minimum.width)) wide" : nil, minimum.height > 0 ? "\(Int(minimum.height)) tall" : nil]
+            Log.info("window \(id) (\(window.info.bundleID)) will not shrink below \(limits.compactMap { $0 }.joined(separator: " or ")); tiling around it")
+            self.refresh()
+        }
+    }
+
     /// A tiled window dragged onto another tile swaps with it.
     private func dropped(_ id: WindowID, at point: CGPoint) -> Bool {
         guard model.windows[id]?.isFloating == false,
@@ -579,7 +597,10 @@ final class AppController {
             case .hidden(let origin)?: placement = "parked at (\(Int(origin.x)),\(Int(origin.y)))"
             case nil: placement = "-"
             }
-            lines.append("  window \(window.id) \(window.info.bundleID) \"\(window.info.title)\" ws \(window.workspace) \(window.isFloating ? "floating" : "tiled") planned \(placement) actual \(FrameApplier.describe(window.info.frame))\(window.id == model.focusedWindow ? " (focused)" : "")")
+            let minimum = window.minimumSize
+            let minText = minimum == .zero ? "" : " min \(Int(minimum.width))x\(Int(minimum.height))"
+            let mode = window.isFloating ? "floating" : plan.overflow.contains(window.id) ? "tiled (overflow, floating on top)" : "tiled"
+            lines.append("  window \(window.id) \(window.info.bundleID) \"\(window.info.title)\" ws \(window.workspace) \(mode)\(minText) planned \(placement) actual \(FrameApplier.describe(window.info.frame))\(window.id == model.focusedWindow ? " (focused)" : "")")
         }
         Log.info(lines.joined(separator: "\n"))
     }

@@ -402,7 +402,8 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         }
         manager.dispatch(.focusWorkspace(.id(.numbered(2)), onCurrentMonitor: false))
         for id: WindowID in 1...3 { manager.addWindow(info(id), isNew: true) }
-        #expect(manager.workspaces[.numbered(2)]?.layout.kind == .master)
+        #expect(manager.workspaces[.numbered(2)]?.layout.isKind(.master) == true)
+        #expect(manager.workspaces[.numbered(2)]?.layout.kind == .mainVertical, "master.orientation left")
         #expect(manager.computePlan().frame(of: 1)?.width == 550)
 
         var config = manager.config
@@ -622,16 +623,129 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.drainEvents().contains(.activeWindow(nil, bundleID: "", title: "")))
     }
 
-    @Test func cycleLayoutSurvivesReloads() {
+    @Test func cycleLayoutFollowsTmuxAndSurvivesReloads() {
         let manager = makeManager()
+        for id: WindowID in 1...4 { manager.addWindow(info(id), isNew: true) }
+        var seen: [LayoutKind] = []
+        for _ in 0..<LayoutKind.defaultCycle.count {
+            manager.dispatch(.cycleLayout(reverse: false))
+            seen.append(manager.workspaces[.numbered(1)]!.layout.kind)
+        }
+        #expect(seen == Array(LayoutKind.defaultCycle.dropFirst()) + [.dwindle], "dwindle, then tmux's next-layout order, wrapping")
+        manager.dispatch(.cycleLayout(reverse: true))
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .tiled)
+        #expect(manager.workspaces[.numbered(1)]?.layout.windows == [1, 2, 3, 4], "window order carries over")
+        manager.dispatch(.cycleLayout(reverse: true))
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .mainVerticalMirrored)
+        let plan = manager.computePlan()
+        #expect(plan.frame(of: 1) == CGRect(x: 450, y: 25, width: 550, height: 775), "main on the right")
+
+        var config = manager.config
+        config.layoutOptions.master.orientation = .top
+        manager.setConfig(config)
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .mainVerticalMirrored, "a chosen main-* keeps its side")
+    }
+
+    @Test func cycleLayoutUsesTheConfiguredLoop() {
+        let manager = makeManager { $0.layoutCycle = [.master, .tiled] }
         for id: WindowID in 1...3 { manager.addWindow(info(id), isNew: true) }
-        manager.dispatch(.cycleLayout)
-        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .master)
-        #expect(manager.computePlan().frame(of: 1)?.width == 550)
-        manager.setConfig(manager.config)
-        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .master)
-        manager.dispatch(.cycleLayout)
-        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .dwindle)
+        manager.dispatch(.cycleLayout(reverse: false))
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .mainVertical, "dwindle is not in the loop: start at its first entry")
+        manager.dispatch(.cycleLayout(reverse: false))
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .tiled)
+        manager.dispatch(.cycleLayout(reverse: false))
+        #expect(manager.workspaces[.numbered(1)]?.layout.isKind(.master) == true)
+    }
+
+    @Test func liveLayoutsKeepTheirShapeAsWindowsComeAndGo() {
+        let manager = makeManager { $0.layout = .tiled }
+        for id: WindowID in 1...3 { manager.addWindow(info(id), isNew: true) }
+        var plan = manager.computePlan()
+        // tmux's tiled with 3: a row of 2, then 1 full width
+        #expect(plan.frame(of: 1) == CGRect(x: 0, y: 25, width: 500, height: 388))
+        #expect(plan.frame(of: 3) == CGRect(x: 0, y: 413, width: 1000, height: 388))
+        manager.addWindow(info(4), isNew: true)
+        plan = manager.computePlan()
+        #expect(plan.frame(of: 4)?.width == 500, "still a grid: 2 x 2")
+        manager.removeWindow(2)
+        manager.removeWindow(3)
+        plan = manager.computePlan()
+        #expect(plan.frame(of: 1) == CGRect(x: 0, y: 25, width: 1000, height: 388), "2 windows: stacked")
+    }
+
+    @Test func minimumSizesMoveSplitsAndTheNewestFloatsWhenTheyCannotFit() {
+        let manager = makeManager()
+        for id: WindowID in 1...3 { manager.addWindow(info(id, bundle: id == 3 ? "com.brave.Browser" : "com.example.app"), isNew: true) }
+        // dwindle: 1 | (2 / 3), each right tile 500 wide
+        #expect(manager.computePlan().frame(of: 3)?.width == 500)
+        #expect(manager.windowRefusedSize(3, minimum: CGSize(width: 700, height: 0)))
+        #expect(!manager.windowRefusedSize(3, minimum: CGSize(width: 650, height: 0)), "minimums only grow")
+        var plan = manager.computePlan()
+        #expect(plan.frame(of: 3) == CGRect(x: 300, y: 413, width: 700, height: 388))
+        #expect(plan.frame(of: 1) == CGRect(x: 0, y: 25, width: 300, height: 775), "2 and 3 share the widened column; 1 gives way")
+        #expect(plan.overflow.isEmpty)
+
+        // the app's next window starts with what was learned
+        manager.addWindow(info(4, bundle: "com.brave.Browser"), isNew: true)
+        #expect(manager.windows[4]?.minimumSize == CGSize(width: 700, height: 0))
+        plan = manager.computePlan()
+        #expect(plan.overflow == [4], "two 700-wide windows cannot share 1000: the newest floats")
+        #expect(plan.frame(of: 4) == CGRect(x: 150, y: 263, width: 700, height: 300), "centred on top, at its minimum width")
+        #expect(manager.window(at: CGPoint(x: 500, y: 400), plan: plan) == 4, "it sits above the tiles")
+        #expect(manager.workspaces[.numbered(1)]?.layout.windows.contains(4) == true, "still tiled in the model")
+
+        // room again: it drops back into its tile
+        manager.removeWindow(3)
+        plan = manager.computePlan()
+        #expect(plan.overflow.isEmpty)
+        #expect(plan.frame(of: 4)?.width == 700)
+
+        // re-tile measures again
+        manager.dispatch(.retile)
+        #expect(manager.windows[4]?.minimumSize == .zero)
+        #expect(manager.appMinimumSizes.isEmpty)
+    }
+
+    @Test func windowsWithoutAMinimumKeepASmallestTile() {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.windowRefusedSize(2, minimum: CGSize(width: 990, height: 0))
+        let plan = manager.computePlan()
+        #expect(plan.overflow == [2], "990 + the 120 floor do not fit 1000")
+        #expect(plan.frame(of: 1)?.width == 1000)
+    }
+
+    @Test func minSizeRuleAndReportedMinimum() throws {
+        let rules = try [rule { match, effects in
+            match.class = try RulePattern("chat")
+            effects.minSize = "monitor_w*0.6 100"
+        }]
+        let manager = makeManager { $0.windowRules = rules }
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2, bundle: "com.example.chat"), isNew: true)
+        #expect(manager.windows[2]?.minimumSize == CGSize(width: 600, height: 100))
+        #expect(manager.computePlan().frame(of: 2)?.width == 600)
+        var reported = info(1)
+        reported.minSize = CGSize(width: 450, height: 0)
+        manager.updateInfo(reported)
+        #expect(manager.computePlan().frame(of: 1)?.width == 1000, "450 + 600 cannot share 1000: 1 tiles alone")
+        #expect(manager.computePlan().overflow == [2], "450 + 600 > 1000: the newest floats")
+    }
+
+    @Test func cycleNextVisitsFloatingWindows() {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        manager.dispatch(.float(.set))
+        manager.addWindow(info(3), isNew: true)
+        manager.dispatch(.float(.set))
+        manager.markFocused(1)
+        #expect(manager.dispatch(.cycleWindows(.floating, reverse: false)).first == .focus(2))
+        #expect(manager.dispatch(.cycleWindows(.floating, reverse: false)).first == .focus(3))
+        #expect(manager.dispatch(.cycleWindows(.floating, reverse: false)).first == .focus(2), "wraps")
+        #expect(manager.dispatch(.cycleWindows(.tiled, reverse: false)).first == .focus(1))
+        #expect(manager.dispatch(.cycleWindows(.all, reverse: true)).first == .focus(3))
     }
 
     @Test func layoutPreviewForHiddenWorkspaces() {

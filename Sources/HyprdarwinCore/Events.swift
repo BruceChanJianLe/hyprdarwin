@@ -101,6 +101,9 @@ public enum Placement: Equatable, Sendable {
 
 public struct Plan: Equatable, Sendable {
     public var placements: [WindowID: Placement] = [:]
+    /// Tiled windows whose minimum size does not fit their workspace: they
+    /// float on top, centred, until there is room for them again.
+    public var overflow: Set<WindowID> = []
 
     public init() {}
 

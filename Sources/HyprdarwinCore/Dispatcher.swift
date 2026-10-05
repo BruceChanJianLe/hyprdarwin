@@ -1,6 +1,11 @@
 import CoreGraphics
 import Foundation
 
+/// Which windows hl.dsp.window.cycle_next visits.
+public enum CycleFilter: String, Sendable {
+    case all, floating, tiled
+}
+
 public enum ToggleAction: String, Sendable {
     case toggle, set, unset
 
@@ -33,11 +38,14 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
     case focusWorkspace(WorkspaceSelector, onCurrentMonitor: Bool)
     case focusMonitor(MonitorSelector)
     case focusLast
+    /// hl.dsp.window.cycle_next: the next (or previous) window of the workspace.
+    case cycleWindows(CycleFilter, reverse: Bool)
     case toggleSpecial(String)
     case moveWorkspaceToMonitor(WorkspaceSelector?, MonitorSelector)
     case layoutMessage(String)
-    /// hd.dsp.cycle_layout: the focused workspace switches dwindle <-> master.
-    case cycleLayout
+    /// hd.dsp.cycle_layout: the focused workspace takes the next (or
+    /// previous) layout of hd.config layout_cycle, like tmux's next-layout.
+    case cycleLayout(reverse: Bool)
     /// hd.dsp.retile: reapply window rules to every window, rebuild every
     /// workspace's layout with even splits and rewrite every frame.
     case retile
@@ -64,11 +72,12 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
         case let .focusWorkspace(selector, onCurrent): return "focus(workspace=\(selector)\(onCurrent ? ", on_current_monitor" : ""))"
         case .focusMonitor(let selector): return "focus(monitor=\(selector))"
         case .focusLast: return "focus(last)"
+        case let .cycleWindows(filter, reverse): return "window.cycle_next(\(filter.rawValue)\(reverse ? ", prev" : ""))"
         case .toggleSpecial(let name): return "workspace.toggle_special(\(name))"
         case let .moveWorkspaceToMonitor(workspace, monitor):
             return "workspace.move(\(workspace.map { "workspace=\($0), " } ?? "")monitor=\(monitor))"
         case .layoutMessage(let message): return "layout(\(message))"
-        case .cycleLayout: return "hd.cycle_layout"
+        case .cycleLayout(let reverse): return "hd.cycle_layout(\(reverse ? "prev" : "next"))"
         case .retile: return "hd.retile"
         case .submap(let name): return "submap(\(name))"
         case .reload: return "reload_config"

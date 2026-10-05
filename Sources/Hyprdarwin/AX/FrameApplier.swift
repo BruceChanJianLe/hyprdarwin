@@ -16,6 +16,9 @@ final class FrameApplier {
     var onUserDrop: ((WindowID, CGPoint) -> Bool)?
     /// The user moved or resized a floating window.
     var onFloatingMoved: ((WindowID, CGRect) -> Void)?
+    /// A tiled window stayed larger than written, twice in a row: the app
+    /// refuses to shrink that far. Carries the size that was asked for.
+    var onSizeRefused: ((WindowID, CGSize) -> Void)?
 
     var isEnabled = true
 
@@ -35,6 +38,9 @@ final class FrameApplier {
 
     private static let settleTime: TimeInterval = 0.25
     private static let maxReasserts = 2
+    /// Larger than this past the written size is a refusal, not rounding
+    /// (terminals snap to their character cells).
+    static let refusalSlack = 4.0
 
     init(source: WindowSource) {
         self.source = source
@@ -98,6 +104,9 @@ final class FrameApplier {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.rewrite(id) }
             } else {
                 Log.debug("apply: accepting window \(id) at \(Self.describe(frame)), wanted \(Self.describe(target.frame))")
+                if !target.parked, frame.width > target.frame.width + Self.refusalSlack || frame.height > target.frame.height + Self.refusalSlack {
+                    onSizeRefused?(id, target.frame.size)
+                }
             }
         }
     }
