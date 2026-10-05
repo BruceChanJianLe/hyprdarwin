@@ -214,7 +214,7 @@ hl.window_rule({
 
 - **Match fields** (all listed fields must match; regexes are unanchored ICU, `negative:` inverts): `class` (bundle id), `title`, `initial_class`, `initial_title`, `app_name`, `role`, `subrole` (`AXStandardWindow`, `AXDialog`, ...), `tag`, `float`, `fullscreen`, `workspace`.
 - **Effects** (applied when the window opens; later rules win per effect): `float`, `tile`, `workspace = "N"` or `"N silent"`, `monitor`, `size`, `move`, `center`, `fullscreen`, `maximize`, `no_initial_focus`, `tag`. `size`/`move` take two expressions using numbers, `+ - * / ( )`, `%` of the monitor, and `monitor_w`, `monitor_h`, `window_w`, `window_h`, `cursor_x`, `cursor_y`.
-- **Dynamic**: `border_color`, `border_size` and `no_border` re-apply when the title changes; `dynamic = true` makes `float`/`tile` re-apply too.
+- **Dynamic**: `border_color`, `border_size`, `no_border` and `min_size` re-apply when the title changes and on every reload; `dynamic = true` makes `float`/`tile` re-apply too.
 - Effects macOS cannot honour (`opacity`, `rounding`, `no_blur`, `animation`, ...) are accepted with a note. Rules that can never match on macOS (`xwayland = true`) are skipped.
 
 Windows the app does not allow to be resized always float.

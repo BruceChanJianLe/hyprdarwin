@@ -731,6 +731,16 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         manager.updateInfo(reported)
         #expect(manager.computePlan().frame(of: 1)?.width == 1000, "450 + 600 cannot share 1000: 1 tiles alone")
         #expect(manager.computePlan().overflow == [2], "450 + 600 > 1000: the newest floats")
+
+        // a min_size rule added by a reload applies to windows already open
+        var config = manager.config
+        config.windowRules = try [rule { match, effects in
+            match.class = try RulePattern("example\\.app")
+            effects.minSize = "300 0"
+        }]
+        manager.setConfig(config)
+        #expect(manager.windows[1]?.ruleMinSize == CGSize(width: 300, height: 0))
+        #expect(manager.windows[2]?.ruleMinSize == nil, "the chat rule is gone")
     }
 
     @Test func cycleNextVisitsFloatingWindows() {

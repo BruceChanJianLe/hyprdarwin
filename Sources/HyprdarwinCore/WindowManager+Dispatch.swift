@@ -356,9 +356,6 @@ extension WindowManager {
             guard let window = windows[id] else { continue }
             let rules = RuleEngine.effects(for: window, rules: config.windowRules)
             windows[id]?.tags = Set(rules.tags)
-            if let monitor = workspaces[window.workspace].flatMap({ self.monitor(id: $0.monitorID) }) {
-                windows[id]?.ruleMinSize = ruleMinimumSize(rules.minSize, for: window, on: monitor)
-            }
             // windows the app does not let us resize always float
             if let float = window.info.isResizable ? rules.float : true { setFloating(id, float) }
             if let mode = rules.fullscreen, window.fullscreen != mode {

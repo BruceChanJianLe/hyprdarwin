@@ -158,14 +158,15 @@ public enum RuleEngine {
         return result
     }
 
-    /// Effects re-applied on title/state change: border always, float/tile
-    /// only from rules marked `dynamic`.
+    /// Effects re-applied on title/state change and config reload: border
+    /// and min_size always, float/tile only from rules marked `dynamic`.
     public static func dynamicEffects(for window: ManagedWindow, rules: [WindowRule]) -> WindowRuleEffects {
         var result = WindowRuleEffects()
         for rule in rules where rule.enabled && rule.match.matches(window) {
             var effects = WindowRuleEffects()
             effects.borderColor = rule.effects.borderColor
             effects.borderSize = rule.effects.borderSize
+            effects.minSize = rule.effects.minSize
             if rule.dynamic { effects.float = rule.effects.float }
             result.merge(effects)
         }

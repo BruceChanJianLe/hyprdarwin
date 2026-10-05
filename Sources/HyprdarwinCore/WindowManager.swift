@@ -528,6 +528,10 @@ public final class WindowManager {
         let effects = RuleEngine.dynamicEffects(for: window, rules: config.windowRules)
         window.borderColor = effects.borderColor
         window.borderSize = effects.borderSize
+        // a tiling constraint: a rule added to the config applies to open windows too
+        if let monitor = workspaces[window.workspace].flatMap({ self.monitor(id: $0.monitorID) }) {
+            window.ruleMinSize = ruleMinimumSize(effects.minSize, for: window, on: monitor)
+        }
         windows[id] = window
         if let float = effects.float, float != window.isFloating {
             setFloating(id, float)
