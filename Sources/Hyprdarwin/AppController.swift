@@ -344,7 +344,7 @@ final class AppController {
                     let isNew = !initial && !previous.contains(info.id)
                     Log.info("window \(info.id) \(isNew ? "opened" : "found"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
                     perform(model.addWindow(info, isNew: isNew))
-                    if isNew { perform(focusTracker.opened(info.id, model: model)) }
+                    if isNew { opened(info.id) }
                 }
             }
             known[pid] = current.isEmpty ? nil : current
@@ -376,6 +376,18 @@ final class AppController {
             return
         }
         refresh()
+    }
+
+    private func opened(_ id: WindowID) {
+        let effects = focusTracker.opened(id, model: model)
+        perform(effects)
+        guard effects.isEmpty, focusTracker.mayHaveKeyboardUnreported(id, model: model) else { return }
+        // no focus event may come for it: ask now, and again once it is keyed
+        source.reportFrontmostFocus()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.managing else { return }
+            self.source.reportFrontmostFocus()
+        }
     }
 
     private func handleOSFocus(_ id: WindowID?, pid: pid_t) {

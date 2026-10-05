@@ -49,6 +49,37 @@ private func makeManager() throws -> WindowManager {
         #expect(model.focusedWindow == 1)
     }
 
+    @Test func newWindowOfAFrontmostAppWithNoFocusEventIsCheckedAndGivesTheKeyboardBack() throws {
+        let model = try makeManager()
+        var tracker = FocusTracker()
+        let t0 = Date()
+        tracker.noteKeyboard(pid: ghostty, window: 50, model: model)
+        // TextEdit launches: it activates with no window yet, and its first
+        // window is keyed before the AX observer exists, so no focus event comes
+        tracker.noteKeyboard(pid: textEdit, window: nil, model: model)
+        model.addWindow(window(10, pid: textEdit, title: "Untitled"), isNew: true)
+        #expect(tracker.opened(10, model: model, now: t0).isEmpty)
+        #expect(tracker.mayHaveKeyboardUnreported(10, model: model), "the caller must ask TextEdit for its focused window")
+
+        // the answer to that check
+        tracker.noteKeyboard(pid: textEdit, window: 10, model: model)
+        let step = tracker.osFocus(10, pid: textEdit, model: model, now: t0.addingTimeInterval(0.3))
+        #expect(step.effects == [.activate(pid: ghostty, window: 50)] && step.recheckAfter == nil)
+        #expect(model.monitorStates[1]?.activeWorkspace == .numbered(1))
+        #expect(model.focusedWindow == 1)
+    }
+
+    @Test func onlyAHiddenNewWindowOfTheFrontmostAppIsChecked() throws {
+        let model = try makeManager()
+        var tracker = FocusTracker()
+        tracker.noteKeyboard(pid: ghostty, window: 50, model: model)
+        model.addWindow(window(10, pid: textEdit, title: "background"), isNew: true)
+        #expect(!tracker.mayHaveKeyboardUnreported(10, model: model), "opened in the background (open -g)")
+        tracker.noteKeyboard(pid: 101, window: 1, model: model)
+        model.addWindow(window(2, pid: 101, title: "Safari 2"), isNew: true)
+        #expect(!tracker.mayHaveKeyboardUnreported(2, model: model), "opened on the visible workspace")
+    }
+
     @Test func activatingAnAppWithAHiddenWindowThenOpeningAnotherStaysPut() throws {
         let model = try makeManager()
         var tracker = FocusTracker()
