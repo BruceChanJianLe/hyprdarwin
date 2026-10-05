@@ -15,7 +15,7 @@ configuration or GUI layers:
 | `Sources/HyprdarwinCore/Input/KeyMappingMerge.swift` | `HyprMac/Core/KeyRemapper.swift` | Merge rules for the Caps Lock -> F18 `UserKeyMapping` entry |
 | `Sources/Hyprdarwin/Input/KeyRemapper.swift` | `HyprMac/Core/KeyRemapper.swift` | hidutil write and IOKit read of `UserKeyMapping` |
 | `Sources/Hyprdarwin/Input/EventTap.swift` | `HyprMac/Core/HotkeyManager.swift` | Active session event tap on its own thread, Hypr key as a modifier, re-enable and health check |
-| `Sources/Hyprdarwin/AX/AppWorker.swift` | `HyprMac/Core/Discovery/AXNotificationService.swift`, `HyprMac/Models/HyprWindow.swift` | Per-app AXObserver subscriptions, admitted window subroles, `AXEnhancedUserInterface` off around frame writes, size-move-size writes |
+| `Sources/Hyprdarwin/AX/AppWorker.swift` | `HyprMac/Core/Discovery/AXNotificationService.swift`, `HyprMac/Models/HyprWindow.swift` | Per-app AXObserver subscriptions, admitted window subroles, `AXEnhancedUserInterface` off around frame writes, size-move-size writes, `AXMinimumSize`/`AXMinSize` read with its 10000 sentinel (`HyprWindow.axMinimumSize()`, `MinSizeMemory.swift`) |
 | `Sources/Hyprdarwin/AX/PrivateAPI.swift` | `HyprMac/PrivateAPI/CGSPrivate.h`, `HyprMac/Models/HyprWindow.swift` | `_AXUIElementGetWindow`, SkyLight focus calls |
 | `Sources/HyprdarwinCore/WindowManager.swift` (`parkingOrigin`) | `HyprMac/Core/WorkspaceManager.swift` | Parking hidden windows in the outer corner of the outermost monitor |
 
