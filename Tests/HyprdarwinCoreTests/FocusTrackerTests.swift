@@ -59,9 +59,8 @@ private func makeManager() throws -> WindowManager {
         tracker.noteKeyboard(pid: textEdit, window: nil, model: model)
         model.addWindow(window(10, pid: textEdit, title: "Untitled"), isNew: true)
         #expect(tracker.opened(10, model: model, now: t0).isEmpty)
-        #expect(tracker.mayHaveKeyboardUnreported(10, model: model), "the caller must ask TextEdit for its focused window")
 
-        // the answer to that check
+        // the caller asks the frontmost app for its focused window
         tracker.noteKeyboard(pid: textEdit, window: 10, model: model)
         let step = tracker.osFocus(10, pid: textEdit, model: model, now: t0.addingTimeInterval(0.3))
         #expect(step.effects == [.activate(pid: ghostty, window: 50)] && step.recheckAfter == nil)
@@ -69,15 +68,52 @@ private func makeManager() throws -> WindowManager {
         #expect(model.focusedWindow == 1)
     }
 
-    @Test func onlyAHiddenNewWindowOfTheFrontmostAppIsChecked() throws {
+    /// HYPR+Enter opens a terminal window on the visible workspace and macOS
+    /// keys it with no focus event: the check makes it the focused window,
+    /// so the highlight follows and the next window splits from it.
+    @Test func newWindowOnTheVisibleWorkspaceTakesFocusWithTheKeyboard() throws {
         let model = try makeManager()
         var tracker = FocusTracker()
-        tracker.noteKeyboard(pid: ghostty, window: 50, model: model)
-        model.addWindow(window(10, pid: textEdit, title: "background"), isNew: true)
-        #expect(!tracker.mayHaveKeyboardUnreported(10, model: model), "opened in the background (open -g)")
+        let t0 = Date()
         tracker.noteKeyboard(pid: 101, window: 1, model: model)
         model.addWindow(window(2, pid: 101, title: "Safari 2"), isNew: true)
-        #expect(!tracker.mayHaveKeyboardUnreported(2, model: model), "opened on the visible workspace")
+        #expect(tracker.opened(2, model: model, now: t0).isEmpty)
+        #expect(model.focusedWindow == 1)
+
+        tracker.noteKeyboard(pid: 101, window: 2, model: model)
+        let step = tracker.osFocus(2, pid: 101, model: model, now: t0.addingTimeInterval(0.3))
+        #expect(step.effects.isEmpty && step.recheckAfter == nil)
+        #expect(model.focusedWindow == 2)
+        #expect(model.workspaces[.numbered(1)]?.lastFocused == 2)
+    }
+
+    /// Brave keys a new window long before it lists it: the stale focus
+    /// event no longer counts, and the check after the late open does.
+    @Test func lateListedNewWindowTakesFocusWithTheKeyboard() throws {
+        let model = try makeManager()
+        var tracker = FocusTracker()
+        let t0 = Date()
+        tracker.noteKeyboard(pid: 101, window: 2, model: model)
+        #expect(tracker.osFocus(2, pid: 101, model: model, now: t0).effects.isEmpty)
+        model.addWindow(window(2, pid: 101, title: "late"), isNew: true)
+        let late = t0.addingTimeInterval(FocusTracker.openGrace + 1)
+        #expect(tracker.opened(2, model: model, now: late).isEmpty)
+        #expect(model.focusedWindow == 1)
+
+        _ = tracker.osFocus(2, pid: 101, model: model, now: late.addingTimeInterval(0.1))
+        #expect(model.focusedWindow == 2)
+    }
+
+    @Test func newWindowOpenedInTheBackgroundLeavesFocusAlone() throws {
+        let model = try makeManager()
+        var tracker = FocusTracker()
+        let t0 = Date()
+        tracker.noteKeyboard(pid: 101, window: 1, model: model)
+        model.addWindow(window(3, pid: 101, title: "background"), isNew: true)
+        #expect(tracker.opened(3, model: model, now: t0).isEmpty)
+        // the check finds the keyboard still on window 1
+        #expect(tracker.osFocus(1, pid: 101, model: model, now: t0.addingTimeInterval(0.1)).effects.isEmpty)
+        #expect(model.focusedWindow == 1)
     }
 
     @Test func activatingAnAppWithAHiddenWindowThenOpeningAnotherStaysPut() throws {

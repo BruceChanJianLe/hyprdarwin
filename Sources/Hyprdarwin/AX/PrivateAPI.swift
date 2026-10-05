@@ -26,8 +26,6 @@ enum SkyLight {
     private typealias SetFrontProcess = @convention(c) (UnsafeMutableRawPointer, UInt32, UInt32) -> CGError
     private typealias PostEventRecord = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<UInt8>) -> CGError
     private typealias ProcessForPID = @convention(c) (pid_t, UnsafeMutableRawPointer) -> OSStatus
-    private typealias MainConnectionID = @convention(c) () -> Int32
-    private typealias CopyManagedDisplaySpaces = @convention(c) (Int32) -> Unmanaged<CFArray>?
 
     private static let skyLight = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
     private static let hiServices = dlopen("/System/Library/Frameworks/ApplicationServices.framework/Frameworks/HIServices.framework/HIServices", RTLD_LAZY)
@@ -35,8 +33,6 @@ enum SkyLight {
     private static let setFrontProcess: SetFrontProcess? = symbol(skyLight, "_SLPSSetFrontProcessWithOptions")
     private static let postEventRecord: PostEventRecord? = symbol(skyLight, "SLPSPostEventRecordTo")
     private static let processForPID: ProcessForPID? = symbol(hiServices, "GetProcessForPID")
-    private static let mainConnectionID: MainConnectionID? = symbol(skyLight, "SLSMainConnectionID")
-    private static let copyManagedDisplaySpaces: CopyManagedDisplaySpaces? = symbol(skyLight, "SLSCopyManagedDisplaySpaces")
 
     private static func symbol<T>(_ handle: UnsafeMutableRawPointer?, _ name: String) -> T? {
         guard let handle, let pointer = dlsym(handle, name) else { return nil }
@@ -44,21 +40,6 @@ enum SkyLight {
     }
 
     private static let userGenerated: UInt32 = 0x200
-
-    /// The Space each display shows now, by display identifier, the way
-    /// yabai's display_space_id reads it. Nil when unavailable.
-    static func currentSpaces() -> [String: UInt64]? {
-        guard let mainConnectionID, let copyManagedDisplaySpaces,
-              let displays = copyManagedDisplaySpaces(mainConnectionID())?.takeRetainedValue() as? [[String: Any]] else { return nil }
-        var spaces: [String: UInt64] = [:]
-        for display in displays {
-            guard let id = display["Display Identifier"] as? String,
-                  let current = display["Current Space"] as? [String: Any],
-                  let space = (current["ManagedSpaceID"] as? NSNumber)?.uint64Value else { continue }
-            spaces[id] = space
-        }
-        return spaces
-    }
 
     /// Front the owning process with `windowID` as its key window, the way
     /// yabai's window_manager_focus_window does. False when unavailable.

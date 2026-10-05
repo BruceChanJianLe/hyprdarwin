@@ -39,8 +39,6 @@ final class AppController {
     private var lastOSFocus: WindowID?
     private var focusTracker = FocusTracker()
     private var listingProbe = ListingProbe()
-    private var managedSpaces = ManagedSpaces()
-    private var onManagedSpace = true
     private var probeTimer: Timer?
     private var lastWorkspaceChange = Date.distantPast
     private var lastHoverCheck = Date.distantPast
@@ -93,9 +91,6 @@ final class AppController {
         input.onBind = { [weak self] index in self?.runBind(index) }
         input.start()
         source.onEvent = { [weak self] event in self?.handle(event) }
-        managedSpaces = ManagedSpaces()
-        onManagedSpace = true
-        checkSpace()
         source.start()
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in self?.mouseMoved() }
         probeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.probeListings() }
@@ -104,7 +99,6 @@ final class AppController {
         observers.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             Log.info("displays changed")
-            self.checkSpace()
             self.model.setMonitors(Monitors.current())
             self.refresh()
         })
@@ -114,9 +108,6 @@ final class AppController {
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             guard let self else { return }
             self.focusTracker.noteKeyboard(pid: app.processIdentifier, window: nil, model: self.model)
-        })
-        observers.append(workspaceCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.checkSpace()
         })
         observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
@@ -332,7 +323,6 @@ final class AppController {
         guard managing else { return }
         switch event {
         case let .windows(pid, infos, initial):
-            guard onManagedSpace else { return }
             let changes = model.applyListing(infos, previous: known[pid] ?? [], initial: initial)
             known[pid] = infos.isEmpty ? nil : Set(infos.map(\.id))
             for change in changes {
@@ -386,8 +376,11 @@ final class AppController {
     private func opened(_ id: WindowID) {
         let effects = focusTracker.opened(id, model: model)
         perform(effects)
-        guard effects.isEmpty, focusTracker.mayHaveKeyboardUnreported(id, model: model) else { return }
-        // no focus event may come for it: ask now, and again once it is keyed
+        guard effects.isEmpty else { return }
+        // the keyboard may be on it with no focus event to say so, or with one
+        // that came too long before it was listed: ask the frontmost app now,
+        // and again once it is keyed
+        lastOSFocus = nil
         source.reportFrontmostFocus()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self, self.managing else { return }
@@ -414,18 +407,11 @@ final class AppController {
     /// A window came or went without its app saying so: that app re-lists
     /// its windows now instead of at the next periodic re-list (ListingProbe).
     private func probeListings() {
-        guard managing, onManagedSpace else { return }
+        guard managing else { return }
         let listed = Dictionary(uniqueKeysWithValues: source.pids.map { ($0, known[$0] ?? []) })
         for pid in listingProbe.appsToRelist(listed: listed, onScreen: WindowStack.onScreenWindows(), now: Date()) {
             source.refresh(pid: pid)
         }
-    }
-
-    private func checkSpace() {
-        let active = SkyLight.currentSpaces().map { managedSpaces.isActive(current: $0) } ?? true
-        guard active != onManagedSpace else { return }
-        onManagedSpace = active
-        Log.info(active ? "back on the managed Space" : "left the managed Space: holding window lists")
     }
 
     /// A tiled window dragged onto another tile swaps with it.
