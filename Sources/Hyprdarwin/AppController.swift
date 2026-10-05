@@ -433,12 +433,8 @@ final class AppController {
     /// notifications keep its frame current) before taking it as a minimum.
     private func sizeRefused(_ id: WindowID, wanted: CGSize) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, self.managing, !self.paused, let window = self.model.windows[id], !window.isFloating else { return }
-            let actual = window.info.frame.size
-            let slack = FrameApplier.refusalSlack
-            let minimum = CGSize(width: actual.width > wanted.width + slack ? actual.width : 0,
-                                 height: actual.height > wanted.height + slack ? actual.height : 0)
-            guard minimum != .zero, self.model.windowRefusedSize(id, minimum: minimum) else { return }
+            guard let self, self.managing, !self.paused, let window = self.model.windows[id],
+                  let minimum = self.model.windowKeptSize(id, wanted: wanted, plan: self.lastPlan) else { return }
             let limits = [minimum.width > 0 ? "\(Int(minimum.width)) wide" : nil, minimum.height > 0 ? "\(Int(minimum.height)) tall" : nil]
             Log.info("window \(id) (\(window.info.bundleID)) will not shrink below \(limits.compactMap { $0 }.joined(separator: " or ")); tiling around it")
             self.refresh()

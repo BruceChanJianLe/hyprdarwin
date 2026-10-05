@@ -265,6 +265,20 @@ private let area = CGRect(x: 0, y: 0, width: 1000, height: 500)
             == CGSize(width: 1100, height: 0))
     }
 
+    @Test func dwindleSplitsKeepTheDirectionTheirMinimumsWereMeasuredIn() {
+        var layout = DwindleLayout()
+        let options = DwindleOptions()
+        let wide = CGRect(x: 0, y: 0, width: 1488, height: 900)
+        for id: WindowID in 1...3 { layout.insert(id, nextTo: id == 1 ? nil : id - 1, area: wide, options: options) }
+        // 1 | (2 / 3); a 1000 wide right column would turn 2 / 3 side by side
+        let minimums: [WindowID: CGSize] = [2: CGSize(width: 1000, height: 0)]
+        let frames = layout.frames(in: wide, options: options, minimums: minimums)
+        #expect(frames[1] == CGRect(x: 0, y: 0, width: 488, height: 900))
+        #expect(frames[2] == CGRect(x: 488, y: 0, width: 1000, height: 450))
+        #expect(frames[3] == CGRect(x: 488, y: 450, width: 1000, height: 450))
+        #expect(layout.minimumSize(in: wide, options: options, minimums: minimums) == CGSize(width: 1000, height: 0))
+    }
+
     @Test func masterStacksMakeRoomForAMinimum() {
         var layout = MasterLayout(options: MasterOptions())
         for id: WindowID in 1...3 { layout.insert(id, focused: nil, options: MasterOptions()) }

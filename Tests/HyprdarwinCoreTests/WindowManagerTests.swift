@@ -702,6 +702,25 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.appMinimumSizes.isEmpty)
     }
 
+    @Test func aRefusalCountsOnlyWhileThePlanStillAsksForThatSize() {
+        let manager = makeManager()
+        for id: WindowID in 1...2 { manager.addWindow(info(id, bundle: "com.brave.Browser"), isNew: true) }
+        let wanted = CGSize(width: 500, height: 775)
+        #expect(manager.computePlan().frame(of: 2)?.size == wanted)
+
+        // its neighbour closed before the refusal was checked: the window followed the new plan
+        manager.removeWindow(1)
+        manager.windowFrameChanged(2, frame: CGRect(x: 0, y: 25, width: 1000, height: 775))
+        #expect(manager.windowKeptSize(2, wanted: wanted, plan: manager.computePlan()) == nil)
+        #expect(manager.windows[2]?.minimumSize == .zero)
+        #expect(manager.appMinimumSizes.isEmpty)
+
+        manager.addWindow(info(3, bundle: "com.brave.Browser"), isNew: true)
+        manager.windowFrameChanged(2, frame: CGRect(x: 0, y: 25, width: 700, height: 775))
+        #expect(manager.windowKeptSize(2, wanted: wanted, plan: manager.computePlan()) == CGSize(width: 700, height: 0))
+        #expect(manager.appMinimumSizes["com.brave.Browser"] == CGSize(width: 700, height: 0))
+    }
+
     @Test func windowsWithoutAMinimumKeepASmallestTile() {
         let manager = makeManager()
         manager.addWindow(info(1), isNew: true)

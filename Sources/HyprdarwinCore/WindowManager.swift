@@ -462,12 +462,31 @@ public final class WindowManager {
         windows[id]?.info.frame = frame
     }
 
+    /// Larger than this past the asked size is a refusal, not rounding
+    /// (terminals snap to their character cells).
+    public static let refusalSlack = 4.0
+
+    /// The app kept a tiled window larger than `wanted`, and its frame has
+    /// since settled. While `plan` still asks for `wanted`, what the window
+    /// kept beyond it (per axis) becomes its minimum; a plan that has moved
+    /// on makes the refusal stale. Returns the minimum when it grew.
+    public func windowKeptSize(_ id: WindowID, wanted: CGSize, plan: Plan) -> CGSize? {
+        guard let window = windows[id], !window.isFloating, let target = plan.frame(of: id)?.size,
+              abs(target.width - wanted.width) <= Self.refusalSlack,
+              abs(target.height - wanted.height) <= Self.refusalSlack else { return nil }
+        let actual = window.info.frame.size
+        let minimum = CGSize(width: actual.width > target.width + Self.refusalSlack ? actual.width : 0,
+                             height: actual.height > target.height + Self.refusalSlack ? actual.height : 0)
+        guard minimum != .zero, windowRefusedSize(id, minimum: minimum) else { return nil }
+        return minimum
+    }
+
     /// The app kept the window larger than it was asked to be: `size` is
     /// what it insisted on, per axis (0 where it complied). Tiling gives the
     /// window, and the app's next windows, at least that from now on.
     /// Returns true when the minimum grew (the plan changes).
     @discardableResult
-    public func windowRefusedSize(_ id: WindowID, minimum size: CGSize) -> Bool {
+    func windowRefusedSize(_ id: WindowID, minimum size: CGSize) -> Bool {
         guard let window = windows[id] else { return false }
         let learned = CGSize(width: max(window.learnedMinSize.width, size.width),
                              height: max(window.learnedMinSize.height, size.height))
