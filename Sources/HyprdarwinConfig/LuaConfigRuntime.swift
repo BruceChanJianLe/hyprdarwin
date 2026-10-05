@@ -148,7 +148,7 @@ public final class LuaConfigRuntime {
         for name in ["monitor", "curve", "animation", "gesture", "device", "permission", "layer_rule", "notify"] {
             setBuiltin(name, .ignored, "hl.\(name)")
         }
-        lua_pushstring(L, "0.1.0-hyprdarwin")
+        lua_pushstring(L, "\(BuildInfo.current.version)-hyprdarwin")
         lua_setfield(L, -2, "version")
 
         // hl.dsp
@@ -189,7 +189,7 @@ public final class LuaConfigRuntime {
         setBuiltin("retile", .dispatcher, "hd.retile")
         namespaceIndexMetatable(prefix: "hd.")
         lua_setfield(L, -2, "dsp")
-        lua_pushstring(L, "0.1.0")
+        lua_pushstring(L, BuildInfo.current.version)
         lua_setfield(L, -2, "version")
         lua_setglobal(L, "hd")
 

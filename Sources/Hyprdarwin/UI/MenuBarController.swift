@@ -26,6 +26,7 @@ final class MenuBarController: NSObject {
     var onTogglePause: (() -> Void)?
     var onOpenAccessibilitySettings: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onAbout: (() -> Void)?
 
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
@@ -73,6 +74,7 @@ final class MenuBarController: NSObject {
         case .configError: statusText = "Running, but the config has errors"
         }
         menu.addItem(disabled(statusText))
+        menu.addItem(disabled("Version \(BuildInfo.current)"))
         if state.status != .waitingForAccessibility {
             var workspace = "Workspace \(state.workspace)"
             if let special = state.special { workspace += " (special:\(special) open)" }
@@ -101,6 +103,7 @@ final class MenuBarController: NSObject {
         pause.isEnabled = state.status != .waitingForAccessibility
         menu.addItem(pause)
         menu.addItem(.separator())
+        menu.addItem(action("About hyprdarwin", #selector(about)))
         menu.addItem(action("Quit hyprdarwin", #selector(quit), key: "q"))
     }
 
@@ -132,4 +135,5 @@ final class MenuBarController: NSObject {
     @objc private func togglePause() { onTogglePause?() }
     @objc private func openAccessibility() { onOpenAccessibilitySettings?() }
     @objc private func quit() { onQuit?() }
+    @objc private func about() { onAbout?() }
 }

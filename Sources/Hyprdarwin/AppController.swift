@@ -50,7 +50,7 @@ final class AppController {
     // MARK: - Lifecycle
 
     func launch() {
-        Log.info("hyprdarwin starting (pid \(ProcessInfo.processInfo.processIdentifier)), config \(watcher.path)")
+        Log.info("hyprdarwin \(BuildInfo.current) starting (pid \(ProcessInfo.processInfo.processIdentifier)), config \(watcher.path)")
         menu.onReload = { [weak self] in self?.reloadConfig() }
         menu.onOpenConfig = { [weak self] in self?.openConfig() }
         menu.onShowMessages = { [weak self] in self?.showMessages() }
@@ -59,6 +59,13 @@ final class AppController {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }
         menu.onQuit = { NSApp.terminate(nil) }
+        menu.onAbout = {
+            NSApp.activate()
+            NSApp.orderFrontStandardAboutPanel(options: [
+                .applicationVersion: BuildInfo.current.description,
+                .version: "",
+            ])
+        }
         banner.onClick = { [weak self] in self?.showMessages() }
         watcher.onChange = { [weak self] in self?.reloadConfig() }
 

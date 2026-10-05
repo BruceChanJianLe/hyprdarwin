@@ -22,6 +22,10 @@
 	<string>__VERSION__</string>
 	<key>CFBundleVersion</key>
 	<string>__BUILD__</string>
+	<key>HyprdarwinBuildOrigin</key>
+	<string>__ORIGIN__</string>
+	<key>HyprdarwinCommit</key>
+	<string>__COMMIT__</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>

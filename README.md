@@ -22,7 +22,7 @@ ditto -x -k /tmp/hyprdarwin/hyprdarwin.zip /Applications
 open /Applications/hyprdarwin.app
 ```
 
-hyprdarwin lives in the menu bar (no Dock icon).
+hyprdarwin lives in the menu bar (no Dock icon). Its menu shows the version, e.g. `Version 0.2.0 (abc1234, run 57)`: the release, the git commit and the CI run that built it. So do About hyprdarwin, the first log line and `/Applications/hyprdarwin.app/Contents/MacOS/hyprdarwin --version`. The release number lives in the `VERSION` file.
 
 ### Grant Accessibility
 
@@ -241,7 +241,7 @@ Some apps (Brave, WhatsApp...) refuse to shrink below a size. hyprdarwin learns 
 
 ## Using it
 
-- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has Reload Config, Open Config, Show Errors, Pause/Resume, Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
+- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has the version, Reload Config, Open Config, Show Errors, Pause/Resume, About and Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
 - **Workspaces** are virtual: windows on hidden workspaces are parked in the bottom-right corner of the right-most display with a 1 pt sliver left on screen. Use one macOS Space per display, and leave that corner free.
 - Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace. While `misc.focus_on_open` is off, the switch waits 0.4 s, so an app that opens a new window silently does not pull you over.
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.

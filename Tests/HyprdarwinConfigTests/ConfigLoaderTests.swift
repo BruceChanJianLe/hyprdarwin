@@ -479,3 +479,25 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(ConfigPaths.resolve(environment: ["HYPRDARWIN_CONFIG": "/tmp/a.lua"], home: home, exists: { $0 == "/Users/me/.config/hypr/hyprdarwin.lua" }) == "/Users/me/.config/hypr/hyprdarwin.lua")
     }
 }
+
+@Suite struct BuildInfoTests {
+    @Test func readsTheStampedInfoPlist() {
+        let ci = BuildInfo(infoDictionary: [
+            "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "57",
+            "HyprdarwinCommit": "abc1234", "HyprdarwinBuildOrigin": "run",
+        ])
+        #expect(ci.description == "0.2.0 (abc1234, run 57)")
+        let local = BuildInfo(infoDictionary: [
+            "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "120",
+            "HyprdarwinCommit": "abc1234-dirty", "HyprdarwinBuildOrigin": "local",
+        ])
+        #expect(local.description == "0.2.0 (abc1234-dirty, local build 120)")
+        #expect(BuildInfo(infoDictionary: nil).description == "dev", "swift run: no bundle")
+        #expect(BuildInfo(infoDictionary: ["CFBundleShortVersionString": "__VERSION__"]).version == "dev", "an unstamped plist")
+    }
+
+    @Test func luaSeesTheVersion() throws {
+        let result = ConfigLoader.load(source: "assert(hd.version == \"\(BuildInfo.current.version)\")")
+        #expect(result.config != nil, "\(result.messages)")
+    }
+}
