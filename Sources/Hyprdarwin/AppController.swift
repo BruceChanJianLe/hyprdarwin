@@ -38,6 +38,8 @@ final class AppController {
     private var lastPlan = Plan()
     private var lastOSFocus: WindowID?
     private var focusTracker = FocusTracker()
+    private var vanishedProbe = VanishedWindowProbe()
+    private var probeTimer: Timer?
     private var lastWorkspaceChange = Date.distantPast
     private var lastHoverCheck = Date.distantPast
     private var trustTimer: Timer?
@@ -91,6 +93,7 @@ final class AppController {
         source.onEvent = { [weak self] event in self?.handle(event) }
         source.start()
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in self?.mouseMoved() }
+        probeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.probeVanishedWindows() }
 
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -135,6 +138,7 @@ final class AppController {
                 Exec.run(command, environment: activeConfig.environment)
             }
         }
+        probeTimer?.invalidate()
         borders.hideAll()
         if managing && !paused { revealParkedWindows() }
         if capsRemapped { KeyRemapper.remove() }
@@ -319,35 +323,26 @@ final class AppController {
         guard managing else { return }
         switch event {
         case let .windows(pid, infos, initial):
-            let previous = known[pid] ?? []
-            let current = Set(infos.map(\.id))
-            var gone = previous.subtracting(current).filter { model.windows[$0] != nil }
-            for info in infos where !previous.contains(info.id) && model.windows[info.id] == nil {
-                // switching native tabs swaps one tab window for another at the
-                // same frame: keep its place instead of closing and reopening
-                guard let old = gone.first(where: { model.windows[$0]?.info.frame.isClose(to: info.frame, tolerance: 4) == true }) else { continue }
-                gone.remove(old)
-                model.replaceWindow(old, with: info)
-                focusTracker.forget(old)
-                Log.info("window \(old) became \(info.id) (tab switch): \(info.bundleID) \"\(info.title)\"")
-            }
-            for id in previous.subtracting(current) where model.windows[id] != nil {
-                perform(model.removeWindow(id))
-            }
-            for info in infos {
-                if model.windows[info.id] != nil {
-                    model.updateInfo(info)
-                } else if activeConfig.unmanagedApps.contains(info.bundleID) {
-                    continue
-                } else {
-                    // a window seen before (its app was unmanaged) is adopted, not opened
-                    let isNew = !initial && !previous.contains(info.id)
-                    Log.info("window \(info.id) \(isNew ? "opened" : "found"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
-                    perform(model.addWindow(info, isNew: isNew))
-                    if isNew { opened(info.id) }
+            let changes = model.applyListing(infos, previous: known[pid] ?? [], initial: initial)
+            known[pid] = infos.isEmpty ? nil : Set(infos.map(\.id))
+            for change in changes {
+                switch change {
+                case let .replaced(old, new):
+                    focusTracker.forget(old)
+                    let info = model.windows[new]?.info
+                    Log.info("window \(old) became \(new) (tab switch): \(info?.bundleID ?? "") \"\(info?.title ?? "")\"")
+                case let .removed(id, effects):
+                    focusTracker.forget(id)
+                    Log.info("window \(id) removed: its app no longer lists it")
+                    perform(effects)
+                case let .added(id, isNew, effects):
+                    if let info = model.windows[id]?.info {
+                        Log.info("window \(id) \(isNew ? "opened" : "found"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
+                    }
+                    perform(effects)
+                    if isNew { opened(id) }
                 }
             }
-            known[pid] = current.isEmpty ? nil : current
         case let .destroyed(pid, id):
             known[pid]?.remove(id)
             focusTracker.forget(id)
@@ -403,6 +398,15 @@ final class AppController {
             guard let self, self.managing else { return }
             self.perform(self.focusTracker.switchDue(model: self.model, keyboardOn: self.lastOSFocus))
             self.refresh()
+        }
+    }
+
+    /// A managed window left the screen: its app re-lists its windows at
+    /// once instead of at the next periodic re-list (see VanishedWindowProbe).
+    private func probeVanishedWindows() {
+        guard managing, !model.windows.isEmpty else { return }
+        for pid in vanishedProbe.appsToRelist(model: model, onScreen: WindowStack.onScreenWindows()) {
+            source.refresh(pid: pid)
         }
     }
 

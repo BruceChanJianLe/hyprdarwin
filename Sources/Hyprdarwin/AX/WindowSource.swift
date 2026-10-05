@@ -56,6 +56,8 @@ final class WindowSource {
 
     func refreshAll() { workers.values.forEach { $0.refresh() } }
 
+    func refresh(pid: pid_t) { workers[pid]?.refresh() }
+
     /// Ask the frontmost app which of its windows is focused.
     func reportFrontmostFocus() {
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }

@@ -46,6 +46,15 @@ enum Exec {
 }
 
 enum WindowStack {
+    /// The window numbers the window server has on screen: ordered in, on
+    /// the current Space (parked windows count). Needs no permission.
+    static func onScreenWindows() -> Set<CGWindowID> {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+        return Set(list.compactMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value })
+    }
+
     /// The window number of the front-most window under `point`, or nil when
     /// something above the normal window layer (a menu, a panel, the Dock,
     /// Spotlight) covers it. Needs no screen-recording permission: only
