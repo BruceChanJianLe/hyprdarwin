@@ -37,12 +37,7 @@ final class AppController {
     private var known: [pid_t: Set<WindowID>] = [:]
     private var lastPlan = Plan()
     private var lastOSFocus: WindowID?
-    /// Who has the keyboard now and who had it before (any app, managed or not).
-    private var keyboardOwner: KeyboardOwner?
-    private var previousKeyboardOwner: KeyboardOwner?
-    /// When each window opened, to tell "macOS focused a brand-new window"
-    /// apart from the user focusing it.
-    private var openedAt: [WindowID: Date] = [:]
+    private var focusTracker = FocusTracker()
     private var lastWorkspaceChange = Date.distantPast
     private var lastHoverCheck = Date.distantPast
     private var trustTimer: Timer?
@@ -105,10 +100,11 @@ final class AppController {
             self.refresh()
         })
         let workspaceCenter = NSWorkspace.shared.notificationCenter
-        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier { keyboardOwner = KeyboardOwner(pid: pid) }
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier { focusTracker.noteKeyboard(pid: pid, window: nil, model: model) }
         observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-            self?.noteKeyboard(pid: app.processIdentifier, window: nil)
+            guard let self else { return }
+            self.focusTracker.noteKeyboard(pid: app.processIdentifier, window: nil, model: self.model)
         })
         observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
@@ -332,7 +328,7 @@ final class AppController {
                 guard let old = gone.first(where: { model.windows[$0]?.info.frame.isClose(to: info.frame, tolerance: 4) == true }) else { continue }
                 gone.remove(old)
                 model.replaceWindow(old, with: info)
-                openedAt[old] = nil
+                focusTracker.forget(old)
                 Log.info("window \(old) became \(info.id) (tab switch): \(info.bundleID) \"\(info.title)\"")
             }
             for id in previous.subtracting(current) where model.windows[id] != nil {
@@ -347,14 +343,14 @@ final class AppController {
                     // a window seen before (its app was unmanaged) is adopted, not opened
                     let isNew = !initial && !previous.contains(info.id)
                     Log.info("window \(info.id) \(isNew ? "opened" : "found"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
-                    if isNew { openedAt[info.id] = Date() }
                     perform(model.addWindow(info, isNew: isNew))
+                    if isNew { perform(focusTracker.opened(info.id, model: model)) }
                 }
             }
             known[pid] = current.isEmpty ? nil : current
         case let .destroyed(pid, id):
             known[pid]?.remove(id)
-            openedAt[id] = nil
+            focusTracker.forget(id)
             if model.windows[id] != nil { Log.info("window \(id) closed") }
             perform(model.removeWindow(id))
         case let .frame(id, frame):
@@ -370,8 +366,8 @@ final class AppController {
             // background apps change their own focused window too; only the
             // frontmost app's focus is the keyboard's (activation re-reports it)
             guard pid == NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
-            noteKeyboard(pid: pid, window: id)
-            handleOSFocus(id)
+            focusTracker.noteKeyboard(pid: pid, window: id, model: model)
+            handleOSFocus(id, pid: pid)
         case .applied(let results):
             // our own write read back: the real frame, never a user move
             for (id, frame) in results { model.windowFrameChanged(id, frame: frame) }
@@ -382,28 +378,19 @@ final class AppController {
         refresh()
     }
 
-    private func handleOSFocus(_ id: WindowID?) {
+    private func handleOSFocus(_ id: WindowID?, pid: pid_t) {
         guard let id, id != lastOSFocus else { return }
         lastOSFocus = id
-        guard let window = model.windows[id], id != model.focusedWindow else { return }
         // a stale notification from the workspace we just left must not pull us back
-        if !model.isVisible(window.workspace), Date().timeIntervalSince(lastWorkspaceChange) < 0.5 { return }
-        let justOpened = openedAt[id].map { Date().timeIntervalSince($0) < 2 } ?? false
-        if justOpened, !activeConfig.focusOnOpen, !model.isVisible(window.workspace) {
-            Log.info("window \(id) opened on hidden workspace \(window.workspace); staying put (misc.focus_on_open is off)")
-        }
-        perform(model.externalFocus(id, justOpened: justOpened, previousOwner: previousKeyboardOwner))
-    }
-
-    /// Track the keyboard's owner: a new frontmost app, or a new focused
-    /// window within it (an app reporting no window keeps the one it had).
-    private func noteKeyboard(pid: pid_t, window: WindowID?) {
-        if pid != keyboardOwner?.pid {
-            previousKeyboardOwner = keyboardOwner
-            keyboardOwner = KeyboardOwner(pid: pid, window: window)
-        } else if let window, window != keyboardOwner?.window {
-            if keyboardOwner?.window != nil { previousKeyboardOwner = keyboardOwner }
-            keyboardOwner?.window = window
+        if let window = model.windows[id], !model.isVisible(window.workspace),
+           Date().timeIntervalSince(lastWorkspaceChange) < 0.5 { return }
+        let step = focusTracker.osFocus(id, pid: pid, model: model)
+        perform(step.effects)
+        guard let delay = step.recheckAfter else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.managing else { return }
+            self.perform(self.focusTracker.switchDue(model: self.model, keyboardOn: self.lastOSFocus))
+            self.refresh()
         }
     }
 
