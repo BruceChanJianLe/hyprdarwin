@@ -218,7 +218,7 @@ Windows the app does not allow to be resized always float.
 
 - **Menu bar**: the current workspace, Reload Config, Open Config, Show Errors, Pause/Resume, Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
 - **Workspaces** are virtual: windows on hidden workspaces are parked in the bottom-right corner of the right-most display with a 1 pt sliver left on screen. Use one macOS Space per display, and leave that corner free.
-- Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace.
+- Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace. While `misc.focus_on_open` is off, the switch waits 0.4 s, so an app that opens a new window silently does not pull you over.
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.
 - **Borders** are drawn in the gap around the focused window, only while it really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every window inactive), and around the other visible windows when `general.col.inactive_border` or a rule's `border_color` is set. They are click-through overlays that never take focus. A `.fullscreen` window gets none.
 - Native macOS tabs (Ghostty, Finder, Terminal) are one tile: switching tabs keeps the tile where it is.
