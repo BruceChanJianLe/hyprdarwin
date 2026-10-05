@@ -406,7 +406,7 @@ final class AppController {
     private func probeListings() {
         guard managing else { return }
         let listed = Dictionary(uniqueKeysWithValues: source.pids.map { ($0, known[$0] ?? []) })
-        for pid in listingProbe.appsToRelist(listed: listed, onScreen: WindowStack.onScreenWindows()) {
+        for pid in listingProbe.appsToRelist(listed: listed, onScreen: WindowStack.onScreenWindows(), now: Date()) {
             source.refresh(pid: pid)
         }
     }

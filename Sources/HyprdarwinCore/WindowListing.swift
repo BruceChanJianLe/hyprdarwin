@@ -67,16 +67,28 @@ public struct ScreenWindow: Equatable, Sendable {
 /// and its tile, border and focus target would wait for the periodic
 /// re-list. The window server cheaply tells when it disagrees with an app's
 /// last list; that app then re-lists its windows, and the list decides.
+/// A busy app may send no list, or one that still disagrees, so each
+/// disagreement asks again with backoff before leaving it to the periodic
+/// re-list.
 public struct ListingProbe {
-    private var asked: Set<WindowID> = []
+    /// The waits before each re-ask after the first.
+    public static let retryDelays: [TimeInterval] = [0.25, 0.5, 1, 2, 4]
+
+    private struct Ask {
+        var retries = 0
+        var due: Date
+    }
+
+    private var asks: [WindowID: Ask] = [:]
 
     public init() {}
 
     /// The apps to re-list. `listed` holds every watched app's last window
     /// list (empty when it lists none). A listed window off screen, or a
-    /// normal-layer window on screen its app did not list, asks once, and
-    /// again only after the disagreement has cleared.
-    public mutating func appsToRelist(listed: [Int32: Set<WindowID>], onScreen: [WindowID: ScreenWindow]) -> Set<Int32> {
+    /// normal-layer window on screen its app did not list, asks at once,
+    /// again after each of `retryDelays` while it lasts, then not until it
+    /// has cleared.
+    public mutating func appsToRelist(listed: [Int32: Set<WindowID>], onScreen: [WindowID: ScreenWindow], now: Date) -> Set<Int32> {
         var disagreeing: [WindowID: Int32] = [:]
         for (pid, ids) in listed {
             for id in ids where onScreen[id] == nil { disagreeing[id] = pid }
@@ -84,8 +96,16 @@ public struct ListingProbe {
         for (id, window) in onScreen where window.layer == 0 && listed[window.pid]?.contains(id) == false {
             disagreeing[id] = window.pid
         }
-        let fresh = Set(disagreeing.keys).subtracting(asked)
-        asked = Set(disagreeing.keys)
-        return Set(fresh.compactMap { disagreeing[$0] })
+        asks = asks.filter { disagreeing[$0.key] != nil }
+        var pids: Set<Int32> = []
+        for (id, pid) in disagreeing {
+            var ask = asks[id] ?? Ask(due: now)
+            guard ask.retries <= Self.retryDelays.count, now >= ask.due else { continue }
+            pids.insert(pid)
+            if ask.retries < Self.retryDelays.count { ask.due = now.addingTimeInterval(Self.retryDelays[ask.retries]) }
+            ask.retries += 1
+            asks[id] = ask
+        }
+        return pids
     }
 }
