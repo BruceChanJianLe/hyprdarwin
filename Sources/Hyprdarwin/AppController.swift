@@ -38,7 +38,7 @@ final class AppController {
     private var lastPlan = Plan()
     private var lastOSFocus: WindowID?
     private var focusTracker = FocusTracker()
-    private var vanishedProbe = VanishedWindowProbe()
+    private var listingProbe = ListingProbe()
     private var probeTimer: Timer?
     private var lastWorkspaceChange = Date.distantPast
     private var lastHoverCheck = Date.distantPast
@@ -93,7 +93,7 @@ final class AppController {
         source.onEvent = { [weak self] event in self?.handle(event) }
         source.start()
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in self?.mouseMoved() }
-        probeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.probeVanishedWindows() }
+        probeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.probeListings() }
 
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -401,11 +401,12 @@ final class AppController {
         }
     }
 
-    /// A managed window left the screen: its app re-lists its windows at
-    /// once instead of at the next periodic re-list (see VanishedWindowProbe).
-    private func probeVanishedWindows() {
-        guard managing, !model.windows.isEmpty else { return }
-        for pid in vanishedProbe.appsToRelist(model: model, onScreen: WindowStack.onScreenWindows()) {
+    /// A window came or went without its app saying so: that app re-lists
+    /// its windows now instead of at the next periodic re-list (ListingProbe).
+    private func probeListings() {
+        guard managing else { return }
+        let listed = Dictionary(uniqueKeysWithValues: source.pids.map { ($0, known[$0] ?? []) })
+        for pid in listingProbe.appsToRelist(listed: listed, onScreen: WindowStack.onScreenWindows()) {
             source.refresh(pid: pid)
         }
     }

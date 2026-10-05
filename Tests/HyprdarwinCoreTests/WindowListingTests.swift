@@ -40,11 +40,12 @@ private func twoBraveWindows() -> (WindowManager, listed: Set<WindowID>) {
     /// without it, and its tile and focus target are gone.
     @Test func closedWindowWithoutDestroyedNotificationLeavesLayoutAndFocus() {
         let (manager, listed) = twoBraveWindows()
-        var probe = VanishedWindowProbe()
-        #expect(probe.appsToRelist(model: manager, onScreen: [1, 2]).isEmpty)
+        var probe = ListingProbe()
+        let both: [WindowID: ScreenWindow] = [1: ScreenWindow(pid: brave), 2: ScreenWindow(pid: brave)]
+        #expect(probe.appsToRelist(listed: [brave: listed], onScreen: both).isEmpty)
 
         // closed: ordered out but alive, so only the window server knows
-        #expect(probe.appsToRelist(model: manager, onScreen: [2]) == [brave])
+        #expect(probe.appsToRelist(listed: [brave: listed], onScreen: [2: ScreenWindow(pid: brave)]) == [brave])
         let changes = manager.applyListing([window(2)], previous: listed, initial: false)
         #expect(changes == [.removed(1, effects: [])])
 
@@ -59,6 +60,21 @@ private func twoBraveWindows() -> (WindowManager, listed: Set<WindowID>) {
         #expect(manager.focusedWindow == 2)
     }
 
+    @Test func newWindowNotYetListedAsksForARelist() {
+        var probe = ListingProbe()
+        let listed: [Int32: Set<WindowID>] = [brave: [1], safari: []]
+        var onScreen: [WindowID: ScreenWindow] = [1: ScreenWindow(pid: brave)]
+        #expect(probe.appsToRelist(listed: listed, onScreen: onScreen).isEmpty)
+        onScreen[3] = ScreenWindow(pid: brave)
+        onScreen[4] = ScreenWindow(pid: brave, layer: 101)
+        onScreen[5] = ScreenWindow(pid: 999)
+        #expect(probe.appsToRelist(listed: listed, onScreen: onScreen) == [brave],
+                "a menu and a window of an app without a worker do not count")
+        onScreen[6] = ScreenWindow(pid: safari)
+        #expect(probe.appsToRelist(listed: listed, onScreen: onScreen) == [safari], "an app listing no windows yet still counts")
+        #expect(probe.appsToRelist(listed: [brave: [1, 3], safari: [6]], onScreen: onScreen).isEmpty)
+    }
+
     @Test func closingTheFocusedWindowFocusesTheOtherOne() {
         let (manager, listed) = twoBraveWindows()
         let changes = manager.applyListing([window(1)], previous: listed, initial: false)
@@ -66,18 +82,19 @@ private func twoBraveWindows() -> (WindowManager, listed: Set<WindowID>) {
         #expect(manager.focusedWindow == 1)
     }
 
-    @Test func probeAsksOncePerDisappearance() {
-        let manager = makeManager()
-        manager.applyListing([window(1), window(2)], previous: [], initial: true)
-        manager.applyListing([window(5, pid: safari, bundle: "com.apple.Safari")], previous: [], initial: true)
-        var probe = VanishedWindowProbe()
-        #expect(probe.appsToRelist(model: manager, onScreen: [2, 5, 77]) == [brave], "unmanaged on-screen windows do not matter")
-        #expect(probe.appsToRelist(model: manager, onScreen: [2, 5]).isEmpty, "still listed while off screen: no re-ask")
-        #expect(probe.appsToRelist(model: manager, onScreen: [1, 2, 5]).isEmpty)
-        #expect(probe.appsToRelist(model: manager, onScreen: [2]) == [brave, safari])
+    @Test func probeAsksOncePerDisagreement() {
+        var probe = ListingProbe()
+        let listed: [Int32: Set<WindowID>] = [brave: [1, 2], safari: [5]]
+        func shown(_ ids: [WindowID]) -> [WindowID: ScreenWindow] {
+            Dictionary(uniqueKeysWithValues: ids.map { ($0, ScreenWindow(pid: $0 == 5 ? safari : brave)) })
+        }
+        #expect(probe.appsToRelist(listed: listed, onScreen: shown([2, 5])) == [brave])
+        #expect(probe.appsToRelist(listed: listed, onScreen: shown([2, 5])).isEmpty, "still listed while off screen: no re-ask")
+        #expect(probe.appsToRelist(listed: listed, onScreen: shown([1, 2, 5])).isEmpty)
+        #expect(probe.appsToRelist(listed: listed, onScreen: shown([2])) == [brave, safari])
         // another Space: everything leaves the screen and each app re-lists once
-        #expect(probe.appsToRelist(model: manager, onScreen: []) == [brave])
-        #expect(probe.appsToRelist(model: manager, onScreen: []).isEmpty)
+        #expect(probe.appsToRelist(listed: listed, onScreen: [:]) == [brave])
+        #expect(probe.appsToRelist(listed: listed, onScreen: [:]).isEmpty)
     }
 
     @Test func tabSwitchKeepsThePlace() {

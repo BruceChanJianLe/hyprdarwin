@@ -46,13 +46,19 @@ enum Exec {
 }
 
 enum WindowStack {
-    /// The window numbers the window server has on screen: ordered in, on
-    /// the current Space (parked windows count). Needs no permission.
-    static func onScreenWindows() -> Set<CGWindowID> {
+    /// Every window the window server has on screen, with its owner and
+    /// layer. Needs no permission.
+    static func onScreenWindows() -> [WindowID: ScreenWindow] {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            return []
+            return [:]
         }
-        return Set(list.compactMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value })
+        var windows: [WindowID: ScreenWindow] = [:]
+        for entry in list {
+            guard let id = (entry[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let pid = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value else { continue }
+            windows[id] = ScreenWindow(pid: pid, layer: entry[kCGWindowLayer as String] as? Int ?? 0)
+        }
+        return windows
     }
 
     /// The window number of the front-most window under `point`, or nil when

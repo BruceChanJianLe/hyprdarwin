@@ -46,24 +46,46 @@ extension WindowManager {
     }
 }
 
-/// Some apps close a window without Accessibility ever posting its destroyed
-/// notification: Chromium browsers such as Brave can order the closed window
-/// out and keep it alive, and it only drops out of the app's window list, so
-/// its tile, border and focus target would linger until the next periodic
-/// re-list. The window server cheaply tells that a managed window left the
-/// screen; that app then re-lists its windows, and the list decides.
-public struct VanishedWindowProbe {
+/// A window the window server has on screen (ordered in on the current
+/// Space; parked windows count).
+public struct ScreenWindow: Equatable, Sendable {
+    public var pid: Int32
+    /// 0 is the normal layer app windows live on; menus and tooltips sit higher.
+    public var layer: Int
+
+    public init(pid: Int32, layer: Int = 0) {
+        self.pid = pid
+        self.layer = layer
+    }
+}
+
+/// Accessibility does not always say when an app's windows come and go.
+/// Chromium browsers such as Brave can close a window by ordering it out and
+/// keeping it alive, so no destroyed notification comes; and their new
+/// windows are not yet listed when the created notification arrives. Either
+/// way the window only shows up in (or drops out of) the app's window list,
+/// and its tile, border and focus target would wait for the periodic
+/// re-list. The window server cheaply tells when it disagrees with an app's
+/// last list; that app then re-lists its windows, and the list decides.
+public struct ListingProbe {
     private var asked: Set<WindowID> = []
 
     public init() {}
 
-    /// The apps to re-list, given the windows on screen now (ordered in on
-    /// the current Space; parked windows count). Each window asks once when
-    /// it leaves the screen, and again only after it has been back on it.
-    public mutating func appsToRelist(model: WindowManager, onScreen: Set<WindowID>) -> Set<Int32> {
-        let vanished = Set(model.windows.keys).subtracting(onScreen)
-        let fresh = vanished.subtracting(asked)
-        asked = vanished
-        return Set(fresh.compactMap { model.windows[$0]?.info.pid })
+    /// The apps to re-list. `listed` holds every watched app's last window
+    /// list (empty when it lists none). A listed window off screen, or a
+    /// normal-layer window on screen its app did not list, asks once, and
+    /// again only after the disagreement has cleared.
+    public mutating func appsToRelist(listed: [Int32: Set<WindowID>], onScreen: [WindowID: ScreenWindow]) -> Set<Int32> {
+        var disagreeing: [WindowID: Int32] = [:]
+        for (pid, ids) in listed {
+            for id in ids where onScreen[id] == nil { disagreeing[id] = pid }
+        }
+        for (id, window) in onScreen where window.layer == 0 && listed[window.pid]?.contains(id) == false {
+            disagreeing[id] = window.pid
+        }
+        let fresh = Set(disagreeing.keys).subtracting(asked)
+        asked = Set(disagreeing.keys)
+        return Set(fresh.compactMap { disagreeing[$0] })
     }
 }
