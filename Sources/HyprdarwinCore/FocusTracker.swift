@@ -87,16 +87,6 @@ public struct FocusTracker {
         return []
     }
 
-    /// Whether a just-opened window may have the keyboard without an event
-    /// saying so: it lands hidden while its app is frontmost. A freshly
-    /// launched app keys its first window before its AX observer is attached,
-    /// so the caller must ask the app for its focused window instead.
-    public func mayHaveKeyboardUnreported(_ id: WindowID, model: WindowManager) -> Bool {
-        guard let window = model.windows[id], !model.config.focusOnOpen,
-              !model.isVisible(window.workspace) else { return false }
-        return window.info.pid == keyboardOwner?.pid
-    }
-
     /// The window is gone (or became another tab window).
     public mutating func forget(_ id: WindowID) {
         openedAt[id] = nil

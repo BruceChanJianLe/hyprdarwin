@@ -46,6 +46,21 @@ enum Exec {
 }
 
 enum WindowStack {
+    /// Every window the window server has on screen, with its owner and
+    /// layer. Needs no permission.
+    static func onScreenWindows() -> [WindowID: ScreenWindow] {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return [:]
+        }
+        var windows: [WindowID: ScreenWindow] = [:]
+        for entry in list {
+            guard let id = (entry[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let pid = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value else { continue }
+            windows[id] = ScreenWindow(pid: pid, layer: entry[kCGWindowLayer as String] as? Int ?? 0)
+        }
+        return windows
+    }
+
     /// The window number of the front-most window under `point`, or nil when
     /// something above the normal window layer (a menu, a panel, the Dock,
     /// Spotlight) covers it. Needs no screen-recording permission: only
