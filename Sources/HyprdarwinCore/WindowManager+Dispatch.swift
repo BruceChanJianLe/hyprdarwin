@@ -80,13 +80,18 @@ extension WindowManager {
             return moveWorkspace(id, to: monitor)
         case .layoutMessage(let message):
             return layoutMessage(message)
-        case .cycleLayout:
-            guard let id = focusedWorkspaceID, let workspace = workspaces[id], let area = tilingArea(for: id) else { return [] }
-            let all = LayoutKind.allCases
-            let next = all[(all.firstIndex(of: workspace.layout.kind)! + 1) % all.count]
+        case .cycleLayout(let reverse):
+            let cycle = LayoutKind.defaultCycle
+            guard let id = focusedWorkspaceID, let workspace = workspaces[id], let area = tilingArea(for: id),
+                  let index = cycle.firstIndex(of: workspace.layout.kind) else { return [] }
+            let next = cycle[(index + (reverse ? cycle.count - 1 : 1)) % cycle.count]
             layoutOverrides[id] = next
             workspaces[id]?.layout = workspace.layout.converted(to: next, area: area, options: config.layoutOptions)
             return []
+        case .retile:
+            return retile()
+        case let .cycleWindows(filter, reverse):
+            return cycleWindows(filter, reverse: reverse)
         case .submap(let name):
             let target = (name == "reset" || name.isEmpty) ? "" : name
             guard target.isEmpty || config.submaps.contains(target) else {
@@ -117,6 +122,18 @@ extension WindowManager {
             return id
         case .relative(let delta):
             return .numbered(max(1, currentNumber + delta))
+        case .relativeOnMonitor(let delta):
+            let monitorID = focusedMonitor?.id
+            let elsewhere = Set(workspaces.values.filter { $0.monitorID != monitorID }.compactMap(\.id.number))
+            let step = delta >= 0 ? 1 : -1
+            var number = currentNumber
+            for _ in 0..<abs(delta) {
+                var next = number + step
+                while next >= 1 && elsewhere.contains(next) { next += step }
+                guard next >= 1 else { break }
+                number = next
+            }
+            return .numbered(number)
         case .existing(let delta), .existingOnMonitor(let delta):
             var existing = Set(workspaces.keys.compactMap(\.number))
             if case .existingOnMonitor = selector {
@@ -322,6 +339,69 @@ extension WindowManager {
         return []
     }
 
+    /// hd.dsp.retile: every window gets its window rules again as if it had
+    /// just opened (float or tile, workspace, floating size and position,
+    /// fullscreen, tags, borders), then every workspace's layout is rebuilt
+    /// from its tiled windows, in their current order, with default splits.
+    func retile() -> [Effect] {
+        var effects: [Effect] = []
+        // measured again from scratch, in case an app once refused a size it now accepts
+        forgetLearnedMinimums()
+        for id in windows.keys.sorted() {
+            guard let window = windows[id] else { continue }
+            let rules = RuleEngine.effects(for: window, rules: config.windowRules)
+            windows[id]?.tags = Set(rules.tags)
+            // windows the app does not let us resize always float
+            if let float = window.info.isResizable ? rules.float : true { setFloating(id, float) }
+            if let mode = rules.fullscreen, window.fullscreen != mode {
+                exitFullscreen(on: window.workspace)
+                windows[id]?.fullscreen = mode
+            }
+            if let target = rules.workspace?.workspace, target != window.workspace {
+                effects += move(id, to: target, follow: false)
+            }
+            if rules.size != nil || rules.move != nil || rules.center == true, let current = windows[id],
+               let monitor = workspaces[current.workspace].flatMap({ self.monitor(id: $0.monitorID) }) {
+                windows[id]?.floatingFrame = initialFloatingFrame(for: current, effects: rules, on: monitor)
+            }
+            applyDynamicRules(to: id)
+        }
+        for (id, workspace) in workspaces {
+            guard let area = tilingArea(for: id) else { continue }
+            let tiled = Set(windows.values.filter { $0.workspace == id && !$0.isFloating }.map(\.id))
+            let order = workspace.layout.windows.filter(tiled.contains) + tiled.subtracting(workspace.layout.windows).sorted()
+            workspaces[id]?.layout = workspace.layout.rebuilt(order, area: area, options: config.layoutOptions)
+        }
+        effects.append(.rewriteAll)
+        return effects
+    }
+
+    /// Hyprland's cyclenext: focus (and raise) the next window of the focused
+    /// workspace, optionally only floating or only tiled ones. Windows that
+    /// float because they do not fit count as floating.
+    func cycleWindows(_ filter: CycleFilter, reverse: Bool) -> [Effect] {
+        guard let workspace = focusedWorkspaceID else { return [] }
+        let plan = computePlan()
+        let candidates = windows.values.filter { window in
+            guard window.workspace == workspace, plan.frame(of: window.id) != nil else { return false }
+            let floating = window.isFloating || plan.overflow.contains(window.id)
+            switch filter {
+            case .all: return true
+            case .floating: return floating
+            case .tiled: return !floating
+            }
+        }.map(\.id).sorted()
+        guard !candidates.isEmpty else { return [] }
+        let target: WindowID
+        if let focused = focusedWindow, let index = candidates.firstIndex(of: focused) {
+            target = candidates[((index + (reverse ? -1 : 1)) % candidates.count + candidates.count) % candidates.count]
+        } else {
+            target = reverse ? candidates.last! : candidates.first!
+        }
+        guard target != focusedWindow else { return [.focus(target)] }
+        return focus(target, warp: true)
+    }
+
     func layoutMessage(_ message: String) -> [Effect] {
         guard let id = focusedWorkspaceID, var workspace = workspaces[id], let area = tilingArea(for: id) else { return [] }
         let focused = focusedWindow.flatMap { windows[$0]?.workspace == id ? $0 : nil }
@@ -364,7 +444,8 @@ extension WindowManager {
     func tiledNeighbor(of id: WindowID, direction: Direction, plan: Plan) -> WindowID? {
         guard let frame = plan.frame(of: id) else { return nil }
         let candidates = visibleFrames(plan).filter { candidate in
-            candidate.id != id && windows[candidate.id].map { !$0.isFloating && $0.fullscreen == nil } == true
+            candidate.id != id && !plan.overflow.contains(candidate.id)
+                && windows[candidate.id].map { !$0.isFloating && $0.fullscreen == nil } == true
         }
         return Neighbor.find(from: frame, direction: direction, among: candidates)
     }
@@ -459,7 +540,9 @@ extension WindowManager {
     /// first (they sit on top), then tiles.
     public func window(at point: CGPoint, plan: Plan) -> WindowID? {
         let visible = visibleFrames(plan).filter { $0.frame.contains(point) }
-        let onTop = visible.filter { windows[$0.id].map { $0.isFloating || $0.fullscreen != nil } == true }
+        let onTop = visible.filter {
+            plan.overflow.contains($0.id) || windows[$0.id].map { $0.isFloating || $0.fullscreen != nil } == true
+        }
         if let focused = focusedWindow, onTop.contains(where: { $0.id == focused }) { return focused }
         return (onTop.first ?? visible.first)?.id
     }

@@ -271,8 +271,26 @@ final class AppWorker {
         return WindowInfo(
             id: id, pid: pid, bundleID: bundleID, appName: appName,
             title: stringAttribute(element, kAXTitleAttribute) ?? "",
-            role: kAXWindowRole as String, subrole: subrole, frame: frame, isResizable: resizable
+            role: kAXWindowRole as String, subrole: subrole, frame: frame, isResizable: resizable,
+            minSize: minimumSize(element)
         )
+    }
+
+    /// The few apps that publish their minimum size do it as AXMinimumSize
+    /// (or AXMinSize); huge values are "no minimum" sentinels.
+    /// Attribute names as HyprMac reads them (HyprWindow.axMinimumSize()).
+    private func minimumSize(_ element: AXUIElement) -> CGSize? {
+        for name in ["AXMinimumSize", "AXMinSize"] {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success,
+                  let value, CFGetTypeID(value) == AXValueGetTypeID() else { continue }
+            var size = CGSize.zero
+            guard AXValueGetValue(value as! AXValue, .cgSize, &size), size.width.isFinite, size.height.isFinite,
+                  size.width >= 0, size.height >= 0, size.width < 10_000, size.height < 10_000,
+                  size.width > 0 || size.height > 0 else { continue }
+            return size
+        }
+        return nil
     }
 
     private func sendFocus() {

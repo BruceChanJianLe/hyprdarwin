@@ -8,6 +8,8 @@
 	<string>hyprdarwin</string>
 	<key>CFBundleExecutable</key>
 	<string>hyprdarwin</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.github.brucechanjianle.hyprdarwin</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -20,6 +22,10 @@
 	<string>__VERSION__</string>
 	<key>CFBundleVersion</key>
 	<string>__BUILD__</string>
+	<key>HyprdarwinBuildOrigin</key>
+	<string>__ORIGIN__</string>
+	<key>HyprdarwinCommit</key>
+	<string>__COMMIT__</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>

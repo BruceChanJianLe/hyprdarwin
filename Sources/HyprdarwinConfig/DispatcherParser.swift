@@ -17,7 +17,6 @@ enum DispatcherParser {
         "window.pseudo": "pseudotiling is not supported",
         "window.pin": "pinning is not supported yet",
         "window.signal": "signals are not supported",
-        "window.cycle_next": "window.cycle_next is not supported yet",
         "window.tag": "window.tag is not supported yet",
         "window.clear_tags": "window.clear_tags is not supported yet",
         "window.toggle_swallow": "swallowing is not supported",
@@ -169,9 +168,27 @@ enum DispatcherParser {
             return fail("expected { x = ..., y = ..., relative = true|false }")
         case "window.center":
             return ok(.center, notes(ignoring: []))
+        case "window.cycle_next":
+            // Hyprland's cyclenext [prev] [tiled|floating]
+            let reverse = table["prev"].bool == true || table["next"].bool == false
+            var filter = CycleFilter.all
+            if table["floating"].bool == true { filter = .floating }
+            if table["tiled"].bool == true { filter = .tiled }
+            var extra: [String] = []
+            if table["visible"] != .none || table["hist"] != .none {
+                extra.append("hl.dsp.window.cycle_next: visible and hist are not supported yet (ignored)")
+            }
+            return ok(.cycleWindows(filter, reverse: reverse), extra)
 
         case "hd.cycle_layout":
-            return ok(.cycleLayout)
+            let direction = first.text ?? table["direction"].text ?? "next"
+            switch direction {
+            case "next": return ok(.cycleLayout(reverse: false))
+            case "prev": return ok(.cycleLayout(reverse: true))
+            default: return fail("direction must be \"next\" or \"prev\"")
+            }
+        case "hd.retile":
+            return ok(.retile)
 
         case "workspace.toggle_special":
             return ok(.toggleSpecial(first.text ?? ""))

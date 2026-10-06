@@ -1,8 +1,45 @@
 import CoreGraphics
 import Foundation
 
+/// A layout a workspace can use: Hyprland's dwindle and master, plus tmux's
+/// seven (the main-* ones are master with a fixed orientation).
 public enum LayoutKind: String, Sendable, CaseIterable {
-    case dwindle, master
+    case dwindle
+    /// Master with `master.orientation`.
+    case master
+    case evenHorizontal = "even-horizontal"
+    case evenVertical = "even-vertical"
+    case mainHorizontal = "main-horizontal"
+    case mainHorizontalMirrored = "main-horizontal-mirrored"
+    case mainVertical = "main-vertical"
+    case mainVerticalMirrored = "main-vertical-mirrored"
+    case tiled
+
+    /// hd.dsp.cycle_layout's loop: dwindle, then tmux's next-layout order.
+    public static let defaultCycle: [LayoutKind] = [
+        .dwindle, .evenHorizontal, .evenVertical, .mainHorizontal, .mainHorizontalMirrored,
+        .mainVertical, .mainVerticalMirrored, .tiled,
+    ]
+
+    /// The master orientation of a main-* layout.
+    var masterOrientation: MasterOrientation? {
+        switch self {
+        case .mainHorizontal: return .top
+        case .mainHorizontalMirrored: return .bottom
+        case .mainVertical: return .left
+        case .mainVerticalMirrored: return .right
+        default: return nil
+        }
+    }
+
+    static func main(_ orientation: MasterOrientation) -> LayoutKind {
+        switch orientation {
+        case .top: return .mainHorizontal
+        case .bottom: return .mainHorizontalMirrored
+        case .left: return .mainVertical
+        case .right: return .mainVerticalMirrored
+        }
+    }
 }
 
 public struct LayoutOptions: Equatable, Sendable {
@@ -27,25 +64,46 @@ public struct LayoutMessageResult: Equatable, Sendable {
 public enum WorkspaceLayout: Equatable, Sendable {
     case dwindle(DwindleLayout)
     case master(MasterLayout)
+    case even(EvenLayout)
 
     public init(kind: LayoutKind, options: LayoutOptions) {
         switch kind {
         case .dwindle: self = .dwindle(DwindleLayout())
-        case .master: self = .master(MasterLayout(options: options.master))
+        case .evenHorizontal: self = .even(EvenLayout(arrangement: .horizontal))
+        case .evenVertical: self = .even(EvenLayout(arrangement: .vertical))
+        case .tiled: self = .even(EvenLayout(arrangement: .tiled))
+        case .master, .mainHorizontal, .mainHorizontalMirrored, .mainVertical, .mainVerticalMirrored:
+            var layout = MasterLayout(options: options.master)
+            if let orientation = kind.masterOrientation { layout.orientation = orientation }
+            self = .master(layout)
         }
     }
 
+    /// What the workspace looks like: master reports its main-* name.
     public var kind: LayoutKind {
         switch self {
         case .dwindle: return .dwindle
-        case .master: return .master
+        case .master(let layout): return .main(layout.orientation)
+        case .even(let layout):
+            switch layout.arrangement {
+            case .horizontal: return .evenHorizontal
+            case .vertical: return .evenVertical
+            case .tiled: return .tiled
+            }
         }
+    }
+
+    /// True when this layout is what `kind` asks for (`master` accepts any orientation).
+    public func isKind(_ kind: LayoutKind) -> Bool {
+        if kind == .master, case .master = self { return true }
+        return self.kind == kind
     }
 
     public var windows: [WindowID] {
         switch self {
         case .dwindle(let layout): return layout.windows
         case .master(let layout): return layout.windows
+        case .even(let layout): return layout.windows
         }
     }
 
@@ -53,16 +111,33 @@ public enum WorkspaceLayout: Equatable, Sendable {
         switch self {
         case .dwindle(let layout): return layout.contains(id)
         case .master(let layout): return layout.contains(id)
+        case .even(let layout): return layout.contains(id)
         }
     }
 
     /// The same windows, in the same order, under another layout.
     public func converted(to kind: LayoutKind, area: CGRect, options: LayoutOptions) -> WorkspaceLayout {
-        guard kind != self.kind else { return self }
+        guard !isKind(kind) else { return self }
+        return Self.build(kind: kind, windows: windows, area: area, options: options)
+    }
+
+    /// A fresh layout of the same kind holding `windows` in that order, with
+    /// default split ratios, weights and mfact (re-tile).
+    public func rebuilt(_ windows: [WindowID], area: CGRect, options: LayoutOptions) -> WorkspaceLayout {
+        Self.build(kind: kind, windows: windows, area: area, options: options)
+    }
+
+    /// `windows` laid out in order, as if each opened after the previous one
+    /// (dwindle's spiral), whatever force_split or new_status say.
+    static func build(kind: LayoutKind, windows: [WindowID], area: CGRect, options: LayoutOptions) -> WorkspaceLayout {
         var layout = WorkspaceLayout(kind: kind, options: options)
+        var buildOptions = options
+        buildOptions.dwindle.forceSplit = 2
+        buildOptions.master.newStatus = .slave
+        buildOptions.master.newOnTop = false
         var previous: WindowID?
         for id in windows {
-            layout.insert(id, focused: previous, area: area, options: options, cursor: nil)
+            layout.insert(id, focused: previous, area: area, options: buildOptions, cursor: nil)
             previous = id
         }
         return layout
@@ -78,6 +153,9 @@ public enum WorkspaceLayout: Equatable, Sendable {
         case .master(var layout):
             layout.insert(id, focused: focused, options: options.master)
             self = .master(layout)
+        case .even(var layout):
+            layout.insert(id, after: focused)
+            self = .even(layout)
         }
     }
 
@@ -89,6 +167,9 @@ public enum WorkspaceLayout: Equatable, Sendable {
         case .master(var layout):
             layout.remove(id)
             self = .master(layout)
+        case .even(var layout):
+            layout.remove(id)
+            self = .even(layout)
         }
     }
 
@@ -100,6 +181,9 @@ public enum WorkspaceLayout: Equatable, Sendable {
         case .master(var layout):
             layout.swap(a, b)
             self = .master(layout)
+        case .even(var layout):
+            layout.swap(a, b)
+            self = .even(layout)
         }
     }
 
@@ -111,6 +195,9 @@ public enum WorkspaceLayout: Equatable, Sendable {
         case .master(var layout):
             layout.replace(old, with: new)
             self = .master(layout)
+        case .even(var layout):
+            layout.replace(old, with: new)
+            self = .even(layout)
         }
     }
 
@@ -122,14 +209,28 @@ public enum WorkspaceLayout: Equatable, Sendable {
         case .master(var layout):
             layout.resize(id, dx: dx, dy: dy, area: area)
             self = .master(layout)
+        case .even(var layout):
+            layout.resize(id, dx: dx, dy: dy, area: area)
+            self = .even(layout)
         }
     }
 
-    /// Raw tile boxes covering `area`, before gaps_in.
-    public func frames(in area: CGRect, options: LayoutOptions) -> [WindowID: CGRect] {
+    /// Raw tile boxes covering `area`, before gaps_in. `minimums` are the
+    /// windows' minimum sizes, gaps included.
+    public func frames(in area: CGRect, options: LayoutOptions, minimums: [WindowID: CGSize] = [:]) -> [WindowID: CGRect] {
         switch self {
-        case .dwindle(let layout): return layout.frames(in: area, options: options.dwindle)
-        case .master(let layout): return layout.frames(in: area)
+        case .dwindle(let layout): return layout.frames(in: area, options: options.dwindle, minimums: minimums)
+        case .master(let layout): return layout.frames(in: area, minimums: minimums)
+        case .even(let layout): return layout.frames(in: area, minimums: minimums)
+        }
+    }
+
+    /// The smallest area all the windows fit in at their minimum sizes.
+    public func minimumSize(in area: CGRect, options: LayoutOptions, minimums: [WindowID: CGSize]) -> CGSize {
+        switch self {
+        case .dwindle(let layout): return layout.minimumSize(in: area, options: options.dwindle, minimums: minimums)
+        case .master(let layout): return layout.minimumSize(minimums: minimums)
+        case .even(let layout): return layout.minimumSize(minimums: minimums)
         }
     }
 
@@ -206,6 +307,8 @@ public enum WorkspaceLayout: Equatable, Sendable {
                 return LayoutMessageResult(error: "unknown master layout message \"\(command)\"")
             }
             return LayoutMessageResult()
+        case .even:
+            return LayoutMessageResult(error: "the \(kind.rawValue) layout takes no layout messages")
         }
     }
 

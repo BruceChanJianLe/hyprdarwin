@@ -16,6 +16,9 @@ final class FrameApplier {
     var onUserDrop: ((WindowID, CGPoint) -> Bool)?
     /// The user moved or resized a floating window.
     var onFloatingMoved: ((WindowID, CGRect) -> Void)?
+    /// A tiled window stayed larger than written, twice in a row: the app
+    /// refuses to shrink that far. Carries the size that was asked for.
+    var onSizeRefused: ((WindowID, CGSize) -> Void)?
 
     var isEnabled = true
 
@@ -98,6 +101,9 @@ final class FrameApplier {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.rewrite(id) }
             } else {
                 Log.debug("apply: accepting window \(id) at \(Self.describe(frame)), wanted \(Self.describe(target.frame))")
+                if !target.parked, frame.width > target.frame.width + WindowManager.refusalSlack || frame.height > target.frame.height + WindowManager.refusalSlack {
+                    onSizeRefused?(id, target.frame.size)
+                }
             }
         }
     }

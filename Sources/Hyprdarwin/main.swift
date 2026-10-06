@@ -1,4 +1,10 @@
 import AppKit
+import HyprdarwinConfig
+
+if CommandLine.arguments.dropFirst().contains(where: { $0 == "--version" || $0 == "-v" }) {
+    print("hyprdarwin \(BuildInfo.current)")
+    exit(0)
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = AppController()

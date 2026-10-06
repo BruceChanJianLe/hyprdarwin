@@ -16,11 +16,13 @@ public struct WindowInfo: Equatable, Sendable {
     public var frame: CGRect
     /// False when the app does not let Accessibility resize the window.
     public var isResizable: Bool
+    /// The smallest size the app allows, when it says so (AXMinimumSize).
+    public var minSize: CGSize?
 
     public init(
         id: WindowID, pid: Int32, bundleID: String, appName: String, title: String,
         role: String = "AXWindow", subrole: String = "AXStandardWindow",
-        frame: CGRect, isResizable: Bool = true
+        frame: CGRect, isResizable: Bool = true, minSize: CGSize? = nil
     ) {
         self.id = id
         self.pid = pid
@@ -31,6 +33,7 @@ public struct WindowInfo: Equatable, Sendable {
         self.subrole = subrole
         self.frame = frame
         self.isResizable = isResizable
+        self.minSize = minSize
     }
 }
 
@@ -56,6 +59,13 @@ public struct ManagedWindow: Equatable, Sendable {
     /// Dynamic rule results, kept for the border overlay.
     public var borderColor: BorderColor?
     public var borderSize: Int?
+    /// A min_size window rule.
+    public var ruleMinSize: CGSize?
+    /// The smallest size the app was seen to accept (it refused anything
+    /// smaller), per axis; zero while unknown.
+    public var learnedMinSize = CGSize.zero
+    /// Order of arrival: the newest windows give way when minimums do not fit.
+    public var sequence = 0
 
     public init(info: WindowInfo, workspace: WorkspaceID, isFloating: Bool) {
         self.info = info
@@ -67,4 +77,11 @@ public struct ManagedWindow: Equatable, Sendable {
     }
 
     public var id: WindowID { info.id }
+
+    /// What tiling must give the window: the largest of what the app
+    /// reports, what it was seen to refuse and what a rule asks for.
+    public var minimumSize: CGSize {
+        let sizes = [info.minSize ?? .zero, learnedMinSize, ruleMinSize ?? .zero]
+        return CGSize(width: sizes.map(\.width).max()!, height: sizes.map(\.height).max()!)
+    }
 }

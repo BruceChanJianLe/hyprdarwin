@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>hyprdarwin</title>
+  <defs>
+    <linearGradient id="drop" x1="330" y1="260" x2="700" y2="840" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#33CCFF"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+    <radialGradient id="hl" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shade" x1="0" y1="560" x2="0" y2="842" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A0B3D" stop-opacity="0"/>
+      <stop offset="1" stop-color="#1A0B3D" stop-opacity="0.28"/>
+    </linearGradient>
+    <linearGradient id="pane" x1="0" y1="474" x2="0" y2="744" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.16"/>
+    </linearGradient>
+    <clipPath id="dropClip"><path d="M512 238C584 238 750 432 750 604A238 238 0 0 1 274 604C274 432 440 238 512 238Z"/></clipPath>
+    <linearGradient id="tile" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#181B22"/>
+      <stop offset="1" stop-color="#0C0E12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="512" cy="560" r="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7C8CFB" stop-opacity="0.38"/>
+      <stop offset="0.5" stop-color="#6D5BF0" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#111318" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="0.3" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="tileShadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <path d="M355.44 100H668.56C883.13 100 924 140.87 924 355.44V668.56C924 883.13 883.13 924 668.56 924H355.44C140.87 924 100 883.13 100 668.56V355.44C100 140.87 140.87 100 355.44 100Z" fill="#111318" filter="url(#tileShadow)"/>
+  <path d="M355.44 100H668.56C883.13 100 924 140.87 924 355.44V668.56C924 883.13 883.13 924 668.56 924H355.44C140.87 924 100 883.13 100 668.56V355.44C100 140.87 140.87 100 355.44 100Z" fill="url(#tile)"/>
+  <path d="M355.44 100H668.56C883.13 100 924 140.87 924 355.44V668.56C924 883.13 883.13 924 668.56 924H355.44C140.87 924 100 883.13 100 668.56V355.44C100 140.87 140.87 100 355.44 100Z" fill="url(#glow)"/>
+  <path d="M355.44 100H668.56C883.13 100 924 140.87 924 355.44V668.56C924 883.13 883.13 924 668.56 924H355.44C140.87 924 100 883.13 100 668.56V355.44C100 140.87 140.87 100 355.44 100Z" fill="none" stroke="url(#rim)" stroke-width="2"/>
+  <g id="droplet">
+    <path d="M512 238C584 238 750 432 750 604A238 238 0 0 1 274 604C274 432 440 238 512 238Z" fill="url(#drop)"/>
+    <g clip-path="url(#dropClip)">
+      <rect x="260" y="230" width="500" height="620" fill="url(#shade)"/>
+      <ellipse cx="420" cy="430" rx="230" ry="150" transform="rotate(-35 420 430)" fill="url(#hl)"/>
+    </g>
+    <path d="M512 238C584 238 750 432 750 604A238 238 0 0 1 274 604C274 432 440 238 512 238Z" fill="none" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="3"/>
+    <rect x="360" y="474" width="142" height="270" rx="22" fill="url(#pane)"/>
+    <rect x="522" y="474" width="142" height="125" rx="22" fill="url(#pane)"/>
+    <rect x="522" y="619" width="61" height="125" rx="18" fill="url(#pane)"/>
+    <rect x="603" y="619" width="61" height="125" rx="18" fill="url(#pane)"/>
+  </g>
+</svg>

@@ -60,8 +60,11 @@ public enum WorkspaceID: Hashable, Sendable, Comparable, CustomStringConvertible
 /// Workspace selectors as accepted by Hyprland's dispatchers.
 public enum WorkspaceSelector: Equatable, Sendable, CustomStringConvertible {
     case id(WorkspaceID)
-    /// "+1" / "-1" / "r+1": numeric offset from the current workspace.
+    /// "+1" / "-1": numeric offset from the current workspace.
     case relative(Int)
+    /// "r+1" / "r-1": the next/previous workspace number on this monitor,
+    /// empty ones included (numbers living on another monitor are skipped).
+    case relativeOnMonitor(Int)
     /// "e+1" / "e-1": the next/previous existing workspace (any monitor).
     case existing(Int)
     /// "m+1" / "m-1": the next/previous existing workspace on this monitor.
@@ -89,7 +92,7 @@ public enum WorkspaceSelector: Equatable, Sendable, CustomStringConvertible {
         if let delta = offset(Substring(value)) {
             self = .relative(delta)
         } else if value.hasPrefix("r"), let delta = offset(value.dropFirst()) {
-            self = .relative(delta)
+            self = .relativeOnMonitor(delta)
         } else if value.hasPrefix("e"), let delta = offset(value.dropFirst()) {
             self = .existing(delta)
         } else if value.hasPrefix("m"), let delta = offset(value.dropFirst()) {
@@ -102,7 +105,8 @@ public enum WorkspaceSelector: Equatable, Sendable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .id(let id): return id.description
-        case .relative(let delta): return delta >= 0 ? "r+\(delta)" : "r\(delta)"
+        case .relative(let delta): return delta >= 0 ? "+\(delta)" : String(delta)
+        case .relativeOnMonitor(let delta): return delta >= 0 ? "r+\(delta)" : "r\(delta)"
         case .existing(let delta): return delta >= 0 ? "e+\(delta)" : "e\(delta)"
         case .existingOnMonitor(let delta): return delta >= 0 ? "m+\(delta)" : "m\(delta)"
         case .previous: return "previous"

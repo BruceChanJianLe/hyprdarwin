@@ -55,8 +55,17 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(action("HYPR + SHIFT + l") == .dispatcher(.swapDirection(.right)))
         #expect(action("HYPR + left") == .dispatcher(.focusDirection(.left)))
         #expect(action("HYPR + SPACE") == .dispatcher(.layoutMessage("togglesplit")))
-        #expect(action("HYPR + SHIFT + SPACE") == .dispatcher(.cycleLayout))
+        #expect(action("HYPR + SHIFT + SPACE") == .dispatcher(.cycleLayout(reverse: false)))
         #expect(action("HYPR + F") == .dispatcher(.fullscreen(.maximized, .toggle)))
+        #expect(action("HYPR + R") == .dispatcher(.retile))
+        #expect(action("HYPR + SHIFT + R") == .dispatcher(.submap("resize")))
+        #expect(action("HYPR + CTRL + R") == .dispatcher(.reload))
+        #expect(action("HYPR + N") == .dispatcher(.focusWorkspace(.existing(1), onCurrentMonitor: false)))
+        #expect(action("HYPR + P") == .dispatcher(.focusWorkspace(.existing(-1), onCurrentMonitor: false)))
+        #expect(action("HYPR + bracketright") == .dispatcher(.focusWorkspace(.relativeOnMonitor(1), onCurrentMonitor: false)))
+        #expect(action("HYPR + bracketleft") == .dispatcher(.focusWorkspace(.relativeOnMonitor(-1), onCurrentMonitor: false)))
+        #expect(action("HYPR + TAB") == nil, "HYPR is Caps Lock, next to Tab: no default Tab bind")
+        #expect(action("HYPR + SHIFT + V") == .dispatcher(.cycleWindows(.floating, reverse: false)))
         let combos = config.binds.filter { $0.submap == nil }.map(\.combo)
         #expect(Set(combos).count == combos.count, "no two global binds share a key")
     }
@@ -66,10 +75,26 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         hl.config({ misc = { focus_on_open = true } })
         hd.config({ unmanaged_apps = { "com.mitchellh.ghostty" } })
         hl.bind("HYPR + C", hd.dsp.cycle_layout())
+        hl.bind("HYPR + R", hd.dsp.retile())
+        hl.bind("HYPR + B", hd.dsp.cycle_layout({ direction = "prev" }))
+        hl.bind("HYPR + T", hl.dsp.window.cycle_next({ floating = true }))
+        hl.bind("HYPR + Y", hl.dsp.window.cycle_next({ tiled = true, prev = true }))
+        hl.window_rule({ match = { class = "brave" }, min_size = "800 50%" })
+        hl.workspace_rule({ workspace = "3", layout = "main-vertical-mirrored" })
+        hl.config({ general = { layout = "even-vertical" } })
         """).config)
+        #expect(config.binds[2].action == .dispatcher(.cycleLayout(reverse: true)))
+        #expect(config.binds[3].action == .dispatcher(.cycleWindows(.floating, reverse: false)))
+        #expect(config.binds[4].action == .dispatcher(.cycleWindows(.tiled, reverse: true)))
+        #expect(config.windowRules[0].effects.minSize == "800 50%")
+        #expect(config.workspaceRule(for: .numbered(3))?.layout == .mainVerticalMirrored)
+        #expect(config.layout == .evenVertical)
+        #expect(load("hl.bind(\"HYPR + C\", hd.dsp.cycle_layout({ direction = \"previous\" }))").config == nil)
+        #expect(load("hl.bind(\"HYPR + C\", hd.dsp.cycle_layout({ direction = \"up\" }))").config == nil)
+        #expect(config.binds[1].action == .dispatcher(.retile))
         #expect(config.focusOnOpen)
         #expect(config.unmanagedApps == ["com.mitchellh.ghostty"])
-        #expect(config.binds[0].action == .dispatcher(.cycleLayout))
+        #expect(config.binds[0].action == .dispatcher(.cycleLayout(reverse: false)))
         #expect(load("hd.config({ unmanaged_apps = \"com.mitchellh.ghostty\" })").config == nil)
         #expect(load("hl.config({ misc = { focus_on_open = \"sometimes\" } })").config == nil)
         let unknown = load("hl.bind(\"HYPR + C\", hd.dsp.frobnicate())")
@@ -448,5 +473,27 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(ConfigPaths.resolve(environment: ["XDG_CONFIG_HOME": "/x"], home: home, exists: { $0.hasPrefix("/Users") }) == "/Users/me/.config/hypr/hyprdarwin.lua")
         #expect(ConfigPaths.resolve(environment: ["HYPRDARWIN_CONFIG": "/tmp/a.lua", "XDG_CONFIG_HOME": "/x"], home: home, exists: { _ in false }) == "/tmp/a.lua")
         #expect(ConfigPaths.resolve(environment: ["HYPRDARWIN_CONFIG": "/tmp/a.lua"], home: home, exists: { $0 == "/Users/me/.config/hypr/hyprdarwin.lua" }) == "/Users/me/.config/hypr/hyprdarwin.lua")
+    }
+}
+
+@Suite struct BuildInfoTests {
+    @Test func readsTheStampedInfoPlist() {
+        let ci = BuildInfo(infoDictionary: [
+            "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "57",
+            "HyprdarwinCommit": "abc1234", "HyprdarwinBuildOrigin": "run",
+        ])
+        #expect(ci.description == "0.2.0 (abc1234, run 57)")
+        let local = BuildInfo(infoDictionary: [
+            "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "120",
+            "HyprdarwinCommit": "abc1234-dirty", "HyprdarwinBuildOrigin": "local",
+        ])
+        #expect(local.description == "0.2.0 (abc1234-dirty, local build 120)")
+        #expect(BuildInfo(infoDictionary: nil).description == "dev", "swift run: no bundle")
+        #expect(BuildInfo(infoDictionary: ["CFBundleShortVersionString": "__VERSION__"]).version == "dev", "an unstamped plist")
+    }
+
+    @Test func luaSeesTheVersion() throws {
+        let result = ConfigLoader.load(source: "assert(hd.version == \"\(BuildInfo.current.version)\")")
+        #expect(result.config != nil, "\(result.messages)")
     }
 }

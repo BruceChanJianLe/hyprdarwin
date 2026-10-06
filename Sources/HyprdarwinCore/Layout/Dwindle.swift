@@ -169,33 +169,31 @@ public struct DwindleLayout: Equatable, Sendable {
         var window: WindowID?
     }
 
-    func boxes(in area: CGRect, options: DwindleOptions) -> [BoxEntry] {
+    /// Every node's box. `minimums` (per window, gaps included) move a
+    /// split away from the even ratio so each side gets at least what its
+    /// windows need, as long as both sides fit. Splits then keep the
+    /// direction they have without minimums, the one their minimums were
+    /// measured in.
+    func boxes(in area: CGRect, options: DwindleOptions, minimums: [WindowID: CGSize] = [:]) -> [BoxEntry] {
         guard let root else { return [] }
+        let axes = minimums.isEmpty ? [:] : splitAxes(in: area, options: options)
         var result: [BoxEntry] = []
         func walk(_ node: Node, _ box: CGRect, _ path: [Bool]) {
             switch node {
             case .leaf(let id):
                 result.append(BoxEntry(path: path, box: box, axis: nil, window: id))
             case let .split(storedAxis, ratio, pinned, first, second):
-                let axis: SplitAxis
-                if options.preserveSplit || pinned {
-                    axis = storedAxis
-                } else {
-                    axis = box.width * options.splitWidthMultiplier >= box.height ? .horizontal : .vertical
-                }
+                let axis = axes[path] ?? Self.axis(storedAxis, pinned: pinned, box: box, options: options)
                 result.append(BoxEntry(path: path, box: box, axis: axis, window: nil))
-                let share = ratio / 2
-                let a: CGRect
-                let b: CGRect
-                if axis == .horizontal {
-                    let w = box.width * share
-                    a = CGRect(x: box.minX, y: box.minY, width: w, height: box.height)
-                    b = CGRect(x: box.minX + w, y: box.minY, width: box.width - w, height: box.height)
-                } else {
-                    let h = box.height * share
-                    a = CGRect(x: box.minX, y: box.minY, width: box.width, height: h)
-                    b = CGRect(x: box.minX, y: box.minY + h, width: box.width, height: box.height - h)
+                let horizontal = axis == .horizontal
+                let total = horizontal ? box.width : box.height
+                var length = total * ratio / 2
+                if !minimums.isEmpty {
+                    let minA = Self.minimum(of: first, at: path + [false], axes: axes, minimums: minimums)
+                    let minB = Self.minimum(of: second, at: path + [true], axes: axes, minimums: minimums)
+                    length = Space.split(total, desired: length, minimums: horizontal ? (minA.width, minB.width) : (minA.height, minB.height))
                 }
+                let (a, b) = Self.cut(box, axis: axis, first: length)
                 walk(first, a, path + [false])
                 walk(second, b, path + [true])
             }
@@ -204,10 +202,54 @@ public struct DwindleLayout: Equatable, Sendable {
         return result
     }
 
-    /// Raw tile boxes (no gaps) covering `area`.
-    public func frames(in area: CGRect, options: DwindleOptions) -> [WindowID: CGRect] {
-        var result: [WindowID: CGRect] = [:]
+    static func axis(_ stored: SplitAxis, pinned: Bool, box: CGRect, options: DwindleOptions) -> SplitAxis {
+        if options.preserveSplit || pinned { return stored }
+        return box.width * options.splitWidthMultiplier >= box.height ? .horizontal : .vertical
+    }
+
+    static func cut(_ box: CGRect, axis: SplitAxis, first length: Double) -> (CGRect, CGRect) {
+        if axis == .horizontal {
+            return (CGRect(x: box.minX, y: box.minY, width: length, height: box.height),
+                    CGRect(x: box.minX + length, y: box.minY, width: box.width - length, height: box.height))
+        }
+        return (CGRect(x: box.minX, y: box.minY, width: box.width, height: length),
+                CGRect(x: box.minX, y: box.minY + length, width: box.width, height: box.height - length))
+    }
+
+    /// Each split's direction (by path) at its plain ratios.
+    func splitAxes(in area: CGRect, options: DwindleOptions) -> [[Bool]: SplitAxis] {
+        var axes: [[Bool]: SplitAxis] = [:]
         for entry in boxes(in: area, options: options) {
+            if let axis = entry.axis { axes[entry.path] = axis }
+        }
+        return axes
+    }
+
+    /// The smallest box the windows of `node` (at `path`) fit in, with the
+    /// splits along `axes`: side by side widths add up, stacked heights add up.
+    static func minimum(of node: Node, at path: [Bool], axes: [[Bool]: SplitAxis], minimums: [WindowID: CGSize]) -> CGSize {
+        switch node {
+        case .leaf(let id):
+            return minimums[id] ?? .zero
+        case let .split(storedAxis, _, _, first, second):
+            let minA = minimum(of: first, at: path + [false], axes: axes, minimums: minimums)
+            let minB = minimum(of: second, at: path + [true], axes: axes, minimums: minimums)
+            if (axes[path] ?? storedAxis) == .horizontal {
+                return CGSize(width: minA.width + minB.width, height: max(minA.height, minB.height))
+            }
+            return CGSize(width: max(minA.width, minB.width), height: minA.height + minB.height)
+        }
+    }
+
+    /// The smallest area every window fits in at its minimum.
+    public func minimumSize(in area: CGRect, options: DwindleOptions, minimums: [WindowID: CGSize]) -> CGSize {
+        root.map { Self.minimum(of: $0, at: [], axes: splitAxes(in: area, options: options), minimums: minimums) } ?? .zero
+    }
+
+    /// Raw tile boxes (no gaps) covering `area`.
+    public func frames(in area: CGRect, options: DwindleOptions, minimums: [WindowID: CGSize] = [:]) -> [WindowID: CGRect] {
+        var result: [WindowID: CGRect] = [:]
+        for entry in boxes(in: area, options: options, minimums: minimums) {
             if let window = entry.window { result[window] = entry.box }
         }
         return result

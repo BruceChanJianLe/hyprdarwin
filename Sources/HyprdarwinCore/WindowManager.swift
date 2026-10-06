@@ -50,6 +50,9 @@ public final class WindowManager {
     var displacedActive: [String: WorkspaceID] = [:]
     /// Most recently focused last.
     var focusHistory: [WindowID] = []
+    /// Minimum sizes learned per app (bundle id), for the app's next windows.
+    public internal(set) var appMinimumSizes: [String: CGSize] = [:]
+    private var windowSequence = 0
     private var pendingEvents: [WMEvent] = []
 
     public init(config: Config = Config()) {
@@ -278,14 +281,15 @@ public final class WindowManager {
         for (id, workspace) in workspaces {
             let kind = layoutOverrides[id] ?? newConfig.workspaceRule(for: id)?.layout ?? newConfig.layout
             var layout = workspace.layout
-            if layout.kind != kind, let area = tilingArea(for: id) {
+            if !layout.isKind(kind), let area = tilingArea(for: id) {
                 layout = layout.converted(to: kind, area: area, options: newConfig.layoutOptions)
             }
-            if case .master(var master) = layout {
+            // main-* layouts keep their own orientation; plain master follows the config
+            if kind == .master || kind.masterOrientation != nil, case .master(var master) = layout {
                 if old.layoutOptions.master.mfact != newConfig.layoutOptions.master.mfact {
                     master.mfact = newConfig.layoutOptions.master.mfact
                 }
-                if old.layoutOptions.master.orientation != newConfig.layoutOptions.master.orientation {
+                if kind == .master, old.layoutOptions.master.orientation != newConfig.layoutOptions.master.orientation {
                     master.orientation = newConfig.layoutOptions.master.orientation
                 }
                 layout = .master(master)
@@ -340,6 +344,9 @@ public final class WindowManager {
         window.tags.formUnion(effects.tags)
         window.borderColor = effects.borderColor
         window.borderSize = effects.borderSize
+        window.learnedMinSize = appMinimumSizes[info.bundleID] ?? .zero
+        windowSequence += 1
+        window.sequence = windowSequence
 
         var silent = !isNew
         if let target = effects.workspace {
@@ -355,6 +362,7 @@ public final class WindowManager {
             window.floatingFrame = translate(info.frame, from: source, to: targetMonitor)
         }
         window.floatingFrame = initialFloatingFrame(for: window, effects: effects, on: targetMonitor)
+        window.ruleMinSize = ruleMinimumSize(effects.minSize, for: window, on: targetMonitor)
 
         windows[info.id] = window
         if !window.isFloating, let area = tilingArea(for: window.workspace) {
@@ -441,6 +449,7 @@ public final class WindowManager {
         window.info.isResizable = info.isResizable
         window.info.role = info.role
         window.info.subrole = info.subrole
+        window.info.minSize = info.minSize
         windows[info.id] = window
         if titleChanged {
             emit(.windowTitle(info.id, title: info.title))
@@ -451,6 +460,47 @@ public final class WindowManager {
     /// The window's real frame as last read (its size is kept while parked).
     public func windowFrameChanged(_ id: WindowID, frame: CGRect) {
         windows[id]?.info.frame = frame
+    }
+
+    /// Larger than this past the asked size is a refusal, not rounding
+    /// (terminals snap to their character cells).
+    public static let refusalSlack = 4.0
+
+    /// The app kept a tiled window larger than `wanted`, and its frame has
+    /// since settled. While `plan` still asks for `wanted`, what the window
+    /// kept beyond it (per axis) becomes its minimum; a plan that has moved
+    /// on makes the refusal stale. Returns the minimum when it grew.
+    public func windowKeptSize(_ id: WindowID, wanted: CGSize, plan: Plan) -> CGSize? {
+        guard let window = windows[id], !window.isFloating, let target = plan.frame(of: id)?.size,
+              abs(target.width - wanted.width) <= Self.refusalSlack,
+              abs(target.height - wanted.height) <= Self.refusalSlack else { return nil }
+        let actual = window.info.frame.size
+        let minimum = CGSize(width: actual.width > target.width + Self.refusalSlack ? actual.width : 0,
+                             height: actual.height > target.height + Self.refusalSlack ? actual.height : 0)
+        guard minimum != .zero, windowRefusedSize(id, minimum: minimum) else { return nil }
+        return minimum
+    }
+
+    /// The app kept the window larger than it was asked to be: `size` is
+    /// what it insisted on, per axis (0 where it complied). Tiling gives the
+    /// window, and the app's next windows, at least that from now on.
+    /// Returns true when the minimum grew (the plan changes).
+    @discardableResult
+    func windowRefusedSize(_ id: WindowID, minimum size: CGSize) -> Bool {
+        guard let window = windows[id] else { return false }
+        let learned = CGSize(width: max(window.learnedMinSize.width, size.width),
+                             height: max(window.learnedMinSize.height, size.height))
+        guard learned != window.learnedMinSize else { return false }
+        windows[id]?.learnedMinSize = learned
+        let app = appMinimumSizes[window.info.bundleID] ?? .zero
+        appMinimumSizes[window.info.bundleID] = CGSize(width: max(app.width, learned.width), height: max(app.height, learned.height))
+        return true
+    }
+
+    /// Forget every learned minimum (re-tile measures them again).
+    func forgetLearnedMinimums() {
+        appMinimumSizes.removeAll()
+        for id in windows.keys { windows[id]?.learnedMinSize = .zero }
     }
 
     /// The user moved or resized a visible floating window: its new home.
@@ -497,21 +547,37 @@ public final class WindowManager {
         let effects = RuleEngine.dynamicEffects(for: window, rules: config.windowRules)
         window.borderColor = effects.borderColor
         window.borderSize = effects.borderSize
+        // a tiling constraint: a rule added to the config applies to open windows too
+        if let monitor = workspaces[window.workspace].flatMap({ self.monitor(id: $0.monitorID) }) {
+            window.ruleMinSize = ruleMinimumSize(effects.minSize, for: window, on: monitor)
+        }
         windows[id] = window
         if let float = effects.float, float != window.isFloating {
             setFloating(id, float)
         }
     }
 
+    func ruleVariables(_ size: CGSize, on monitor: Monitor) -> RuleExpression.Variables {
+        let area = monitor.visibleFrame
+        return RuleExpression.Variables(
+            monitorW: area.width, monitorH: area.height, windowW: size.width, windowH: size.height,
+            cursorX: (cursor?.x ?? area.midX) - area.minX, cursorY: (cursor?.y ?? area.midY) - area.minY
+        )
+    }
+
+    /// A min_size rule's "w h", evaluated like `size`.
+    func ruleMinimumSize(_ text: String?, for window: ManagedWindow, on monitor: Monitor) -> CGSize? {
+        guard let text, let (wText, hText) = RuleExpression.splitPair(text) else { return nil }
+        let variables = ruleVariables(window.info.frame.size, on: monitor)
+        guard case .success(let w) = RuleExpression.evaluate(wText, horizontal: true, variables: variables),
+              case .success(let h) = RuleExpression.evaluate(hText, horizontal: false, variables: variables) else { return nil }
+        return CGSize(width: max(0, w), height: max(0, h))
+    }
+
     func initialFloatingFrame(for window: ManagedWindow, effects: WindowRuleEffects, on monitor: Monitor) -> CGRect {
         let area = monitor.visibleFrame
         var frame = window.floatingFrame
-        func variables(_ size: CGSize) -> RuleExpression.Variables {
-            RuleExpression.Variables(
-                monitorW: area.width, monitorH: area.height, windowW: size.width, windowH: size.height,
-                cursorX: (cursor?.x ?? area.midX) - area.minX, cursorY: (cursor?.y ?? area.midY) - area.minY
-            )
-        }
+        func variables(_ size: CGSize) -> RuleExpression.Variables { ruleVariables(size, on: monitor) }
         if let size = effects.size, let (wText, hText) = RuleExpression.splitPair(size),
            case .success(let w) = RuleExpression.evaluate(wText, horizontal: true, variables: variables(frame.size)),
            case .success(let h) = RuleExpression.evaluate(hText, horizontal: false, variables: variables(frame.size)) {
@@ -632,18 +698,71 @@ public final class WindowManager {
     /// Where the tiled windows of `id` would go if it were shown (the state
     /// dump uses it to check hidden workspaces without showing them).
     public func layoutPreview(for id: WorkspaceID) -> [WindowID: CGRect] {
-        guard let workspace = workspaces[id], let area = tilingArea(for: id) else { return [:] }
-        return Gaps.apply(workspace.layout.frames(in: area, options: config.layoutOptions), area: area, gapsIn: gapsIn(for: id))
+        tiledFrames(for: id).frames
     }
+
+    /// The tiled windows of `id` with their frames (gaps applied), and the
+    /// newest windows that do not fit at their minimum sizes, which float
+    /// instead, one at a time, until the rest fit.
+    func tiledFrames(for id: WorkspaceID) -> (frames: [WindowID: CGRect], overflow: [WindowID]) {
+        guard var layout = workspaces[id]?.layout, let area = tilingArea(for: id) else { return ([:], []) }
+        let gaps = gapsIn(for: id)
+        var minimums: [WindowID: CGSize] = [:]
+        for window in layout.windows {
+            guard let size = windows[window]?.minimumSize, size.width > 0 || size.height > 0 else { continue }
+            // a tile is the window plus gaps_in on each side; no tile outgrows the area
+            minimums[window] = CGSize(width: size.width > 0 ? min(area.width, size.width + gaps.left + gaps.right) : 0,
+                                      height: size.height > 0 ? min(area.height, size.height + gaps.top + gaps.bottom) : 0)
+        }
+        // once any window needs room, no other tile may be squeezed to nothing
+        if !minimums.isEmpty {
+            for window in layout.windows {
+                let size = minimums[window] ?? .zero
+                minimums[window] = CGSize(width: max(size.width, min(area.width, Self.smallestTile.width)),
+                                          height: max(size.height, min(area.height, Self.smallestTile.height)))
+            }
+        }
+        var overflow: [WindowID] = []
+        func fits() -> Bool {
+            let needed = layout.minimumSize(in: area, options: config.layoutOptions, minimums: minimums)
+            return needed.width <= area.width + 0.5 && needed.height <= area.height + 0.5
+        }
+        while !minimums.isEmpty, layout.windows.count > 1, !fits() {
+            let newest = layout.windows.max { (windows[$0]?.sequence ?? 0, $0) < (windows[$1]?.sequence ?? 0, $1) }!
+            layout.remove(newest)
+            minimums[newest] = nil
+            overflow.append(newest)
+        }
+        let raw = layout.frames(in: area, options: config.layoutOptions, minimums: minimums)
+        return (Gaps.apply(raw, area: area, gapsIn: gaps), overflow)
+    }
+
+    /// The least a tile gets when other windows' minimums squeeze it.
+    static let smallestTile = CGSize(width: 120, height: 80)
 
     /// Where every window should be right now.
     public func computePlan() -> Plan {
         var plan = Plan()
         var tiled: [WindowID: CGRect] = [:]
-        for (id, workspace) in workspaces where isVisible(id) {
+        var overflowFrames: [WindowID: CGRect] = [:]
+        for id in workspaces.keys where isVisible(id) {
             guard let area = tilingArea(for: id) else { continue }
-            let raw = workspace.layout.frames(in: area, options: config.layoutOptions)
-            tiled.merge(Gaps.apply(raw, area: area, gapsIn: gapsIn(for: id))) { a, _ in a }
+            let result = tiledFrames(for: id)
+            tiled.merge(result.frames) { a, _ in a }
+            // the ones that do not fit float centred on top, newest last, a little apart
+            for (index, window) in result.overflow.reversed().enumerated() {
+                guard let managed = windows[window] else { continue }
+                let wanted = managed.minimumSize
+                var size = managed.info.frame.size
+                if wanted.width > 0 { size.width = wanted.width }
+                if wanted.height > 0 { size.height = wanted.height }
+                size = CGSize(width: min(size.width, area.width), height: min(size.height, area.height))
+                let offset = Double(index) * 30
+                let frame = CGRect(x: area.midX - size.width / 2 + offset, y: area.midY - size.height / 2 + offset,
+                                   width: size.width, height: size.height)
+                overflowFrames[window] = clamp(frame, to: area).integral
+                plan.overflow.insert(window)
+            }
         }
         // a fullscreen window hides the rest of its workspace: macOS gives no
         // way to keep it above them (and translucent apps would show them)
@@ -662,7 +781,7 @@ public final class WindowManager {
                 plan.placements[window.id] = .frame(frame.integral)
             } else if window.isFloating {
                 plan.placements[window.id] = .frame(window.floatingFrame.integral)
-            } else if let frame = tiled[window.id] {
+            } else if let frame = tiled[window.id] ?? overflowFrames[window.id] {
                 plan.placements[window.id] = .frame(frame)
             } else {
                 plan.placements[window.id] = .frame(window.floatingFrame.integral)

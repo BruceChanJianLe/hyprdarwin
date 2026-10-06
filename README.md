@@ -1,9 +1,11 @@
+<p align="center"><img src="Resources/hyprdarwin-icon.svg" width="160" alt="hyprdarwin logo"></p>
+
 # hyprdarwin
 
 A personal, Hyprland-inspired tiling window manager for macOS.
 
 - Configured in Lua with a subset of Hyprland's own `hl.*` API, in a text file the app never writes.
-- Dwindle and master layouts, virtual Hyprland-style workspaces (numbered, created on demand, plus special scratchpads), window rules, submaps.
+- Dwindle and master layouts plus tmux's seven (HYPR + SHIFT + SPACE loops through them like tmux's next-layout), tiling that respects each app's minimum window size, virtual Hyprland-style workspaces (numbered, created on demand, plus special scratchpads), window rules, submaps.
 - A built-in Hypr key: Caps Lock becomes a modifier while hyprdarwin runs (no Karabiner needed).
 - Uses only the Accessibility API and SIP-safe calls: System Integrity Protection stays on.
 
@@ -20,7 +22,7 @@ ditto -x -k /tmp/hyprdarwin/hyprdarwin.zip /Applications
 open /Applications/hyprdarwin.app
 ```
 
-hyprdarwin lives in the menu bar (no Dock icon).
+hyprdarwin lives in the menu bar (no Dock icon). Its menu shows the version, e.g. `Version 0.2.0 (abc1234, run 57)`: the release, the git commit and the CI run that built it. So do About hyprdarwin, the first log line and `/Applications/hyprdarwin.app/Contents/MacOS/hyprdarwin --version`. The release number lives in the `VERSION` file.
 
 ### Grant Accessibility
 
@@ -91,7 +93,8 @@ hl.config({
 
 if hd then
     hd.config({ hypr_key = "caps_lock", hide_corner = "bottom-right" })
-    hl.bind("HYPR + SHIFT + SPACE", hd.dsp.cycle_layout())   -- this workspace: dwindle <-> master
+    hl.bind("HYPR + SHIFT + SPACE", hd.dsp.cycle_layout())   -- this workspace: next layout, like tmux
+    hl.bind("HYPR + R", hd.dsp.retile())                     -- reapply rules, re-tile everything
 end
 
 hl.workspace_rule({ workspace = "5", layout = "master" })
@@ -114,7 +117,7 @@ for i = 1, 10 do
 end
 hl.bind(mod .. " + ALT + 1", hl.dsp.focus({ workspace = 11 }))   -- workspaces have no upper limit
 
-hl.bind(mod .. " + R", hl.dsp.submap("resize"))
+hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"))
 hl.define_submap("resize", function()
     hl.bind("right",  hl.dsp.window.resize({ x = 40, y = 0, relative = true }), { repeating = true })
     hl.bind("left",   hl.dsp.window.resize({ x = -40, y = 0, relative = true }), { repeating = true })
@@ -130,7 +133,7 @@ hl.on("hyprland.start", function()
 end)
 ```
 
-The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE cycles the layout; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + R enters a resize submap, HYPR + S toggles the scratchpad, HYPR + F maximizes.
+The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE goes to the next layout (dwindle, then tmux's seven); HYPR + V floats a window and HYPR + SHIFT + V cycles through the floating ones; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + N / P go to the next / previous workspace that has windows and HYPR + ] / [ to the next / previous one on this display, empty ones included; HYPR + R re-tiles, HYPR + SHIFT + R enters a resize submap, HYPR + CTRL + R reloads the config, HYPR + S toggles the scratchpad, HYPR + F maximizes. There is no HYPR + TAB bind: Caps Lock sits right next to Tab.
 
 ### API reference
 
@@ -157,7 +160,7 @@ Options:
 
 | Option | Values |
 |---|---|
-| `general.layout` | `"dwindle"` or `"master"` |
+| `general.layout` | `"dwindle"`, `"master"`, or one of tmux's layouts (below) |
 | `general.gaps_in`, `general.gaps_out` | number, or `"top right bottom left"` (1 to 4 numbers) |
 | `general.border_size` | border width in points (default 2, 0 hides borders) |
 | `general.col.active_border`, `general.col.inactive_border` | border colours of the focused window (default the Hyprland gradient `"rgba(33ccffee) rgba(00ff99ee) 45deg"`) and the others (default none: unfocused windows get no border): a colour, `"rgba(..) rgba(..) 45deg"`, `{ colors = { ... }, angle = 45 }` for a gradient, or `0xAARRGGBB` |
@@ -193,9 +196,11 @@ Dispatchers (`hl.dsp.*`):
 | `workspace.move({ monitor, workspace? })` | |
 | `layout(message)` | dwindle: `togglesplit`, `swapsplit`, `splitratio <delta>` / `splitratio exact <v>`; master: `swapwithmaster`, `focusmaster`, `addmaster`, `removemaster`, `mfact <delta>` / `mfact exact <v>`, `orientation{left,right,top,bottom,next,prev}`, `cyclenext`, `cycleprev`, `swapnext`, `swapprev`, `rollnext`, `rollprev` |
 | `submap(name)`, `reload_config()`, `exit()`, `no_op()` | `exit` quits hyprdarwin |
-| `hd.dsp.cycle_layout()` | hyprdarwin only: the focused workspace switches between dwindle and master (kept across reloads) |
+| `window.cycle_next({ floating, tiled, prev })` | focus and raise the next window of the workspace (Hyprland's `cyclenext`); `floating = true` only visits floating windows, including those floating because they do not fit, `tiled = true` only tiles, `prev = true` goes backwards |
+| `hd.dsp.cycle_layout({ direction })` | hyprdarwin only: the focused workspace takes the next (`direction = "prev"`: previous) layout of `dwindle`, `even-horizontal`, `even-vertical`, `main-horizontal`, `main-horizontal-mirrored`, `main-vertical`, `main-vertical-mirrored`, `tiled`, wrapping around: dwindle, then tmux's next-layout order. Kept across reloads |
+| `hd.dsp.retile()` | hyprdarwin only: re-tile. Every window gets its window rules again as if it had just opened (float or tile, `workspace` (silently), floating `size`/`move`/`center`, `fullscreen`, tags, borders; a window no rule decides keeps its floating state), every workspace's layout is rebuilt from its windows in their current order with default split ratios and mfact, and every window is written to its place again |
 
-Workspace selectors: `3`, `"special"`, `"special:name"`, `"+1"`/`"-1"` (relative number), `"e+1"`/`"e-1"` (next/previous existing), `"m+1"`/`"m-1"` (existing on this monitor), `"previous"`, `"empty"`. Monitor selectors: a name (or part of it), an index from the left, `"l"`/`"r"`/`"u"`/`"d"`, `"+1"`/`"-1"`, `"current"`.
+Workspace selectors: `3`, `"special"`, `"special:name"`, `"+1"`/`"-1"` (relative number), `"r+1"`/`"r-1"` (next/previous number on this monitor, empty ones included: numbers shown or kept on another monitor are skipped), `"e+1"`/`"e-1"` (next/previous existing), `"m+1"`/`"m-1"` (existing on this monitor), `"previous"`, `"empty"`. Monitor selectors: a name (or part of it), an index from the left, `"l"`/`"r"`/`"u"`/`"d"`, `"+1"`/`"-1"`, `"current"`.
 
 ### Window rules
 
@@ -209,17 +214,38 @@ hl.window_rule({
 
 - **Match fields** (all listed fields must match; regexes are unanchored ICU, `negative:` inverts): `class` (bundle id), `title`, `initial_class`, `initial_title`, `app_name`, `role`, `subrole` (`AXStandardWindow`, `AXDialog`, ...), `tag`, `float`, `fullscreen`, `workspace`.
 - **Effects** (applied when the window opens; later rules win per effect): `float`, `tile`, `workspace = "N"` or `"N silent"`, `monitor`, `size`, `move`, `center`, `fullscreen`, `maximize`, `no_initial_focus`, `tag`. `size`/`move` take two expressions using numbers, `+ - * / ( )`, `%` of the monitor, and `monitor_w`, `monitor_h`, `window_w`, `window_h`, `cursor_x`, `cursor_y`.
-- **Dynamic**: `border_color`, `border_size` and `no_border` re-apply when the title changes; `dynamic = true` makes `float`/`tile` re-apply too.
+- **Dynamic**: `border_color`, `border_size`, `no_border` and `min_size` re-apply when the title changes and on every reload; `dynamic = true` makes `float`/`tile` re-apply too.
 - Effects macOS cannot honour (`opacity`, `rounding`, `no_blur`, `animation`, ...) are accepted with a note. Rules that can never match on macOS (`xwayland = true`) are skipped.
 
 Windows the app does not allow to be resized always float.
 
+### Layouts
+
+`dwindle` (Hyprland's spiral) and `master` (Hyprland's master, sided by `master.orientation`), plus tmux's layouts, in the order tmux's next-layout visits them:
+
+| Layout | Arrangement |
+|---|---|
+| `even-horizontal` | side by side, equal widths |
+| `even-vertical` | stacked, equal heights |
+| `main-horizontal` | the first window on top (`master.mfact` of the height), the rest in a row below |
+| `main-horizontal-mirrored` | the same with the first window at the bottom |
+| `main-vertical` | the first window on the left (`master.mfact` of the width), the rest stacked on the right |
+| `main-vertical-mirrored` | the same with the first window on the right |
+| `tiled` | a grid, rows and columns counted as tmux does (3 windows: 2 above 1, 5: 2 + 2 + 1); an incomplete last row shares its width evenly |
+
+They are live: the layout keeps its shape as windows open and close. In the even and tiled layouts a new window goes after the focused one; in the main-* layouts `master.new_status` decides. The main-* layouts are master layouts and take its layout messages; in the even and tiled layouts, resizing moves the boundary between the focused window (or its row and column) and the next one. Switching layouts keeps the windows' order; `hd.dsp.retile()` rebuilds them with even shares.
+
+### Minimum window sizes
+
+Some apps (Brave, WhatsApp...) refuse to shrink below a size. hyprdarwin learns it: when a tiled window stays larger than written, it is not asked for less again, and the app's next windows start with that minimum. An app that publishes `AXMinimumSize` is believed straight away, and a `min_size = "w h"` window rule (expressions as in `size`) asks for more. Splits, master columns and even shares then move so every window gets at least its minimum, and the others share what is left. When the minimums cannot all fit, the newest windows that do not fit float centred on top (cycle through them with `window.cycle_next({ floating = true })`) until there is room again, then drop back into their tiles. Learned minimums last until hyprdarwin quits; `hd.dsp.retile()` measures them again.
+
 ## Using it
 
-- **Menu bar**: the current workspace, Reload Config, Open Config, Show Errors, Pause/Resume, Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
+- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has the version, Reload Config, Open Config, Show Errors, Pause/Resume, About and Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
 - **Workspaces** are virtual: windows on hidden workspaces are parked in the bottom-right corner of the right-most display with a 1 pt sliver left on screen. Use one macOS Space per display, and leave that corner free.
 - Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace. While `misc.focus_on_open` is off, the switch waits 0.4 s, so an app that opens a new window silently does not pull you over.
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.
+- Floating windows go on top when focused; HYPR + SHIFT + V brings each floating window to the front in turn. macOS gives no way to keep them above tiles that are clicked afterwards.
 - **Borders** are drawn in the gap around the focused window, only while it really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every window inactive), and around the other visible windows when `general.col.inactive_border` or a rule's `border_color` is set. They are click-through overlays that never take focus. A `.fullscreen` window gets none.
 - Native macOS tabs (Ghostty, Finder, Terminal) are one tile: switching tabs keeps the tile where it is.
 - Logs: `~/Library/Logs/hyprdarwin.log` (set `HYPRDARWIN_DEBUG=1` for more), or `log stream --predicate 'subsystem == "io.github.brucechanjianle.hyprdarwin"'`. `kill -USR1 $(pgrep -x hyprdarwin)` writes the full window and workspace state to the log.

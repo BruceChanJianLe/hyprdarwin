@@ -109,13 +109,13 @@ struct ConfigBuilder {
         }
         switch path {
         case "general.layout":
-            guard let text = value.text else { throw bad("\"dwindle\" or \"master\"") }
+            guard let text = value.text else { throw bad(Self.layoutNames) }
             if let kind = LayoutKind(rawValue: text) {
                 config.layout = kind
             } else if ["scrolling", "monocle"].contains(text) {
                 note(.warning, "\(location) general.layout: the \(text) layout is not supported yet; keeping \(config.layout.rawValue)")
             } else {
-                throw bad("\"dwindle\" or \"master\"")
+                throw bad(Self.layoutNames)
             }
         case "general.gaps_in", "general.gaps_out":
             guard let insets = Self.insets(value) else { throw bad("a number or a string like \"5 10 5 10\"") }
@@ -194,6 +194,8 @@ struct ConfigBuilder {
         }
     }
 
+    static let layoutNames = LayoutKind.allCases.map { "\"\($0.rawValue)\"" }.joined(separator: ", ")
+
     // MARK: - hd.config
 
     mutating func applyMacOptions(_ table: LuaTable, location: String) throws {
@@ -242,7 +244,7 @@ struct ConfigBuilder {
         "scroll_mouse": "ignored on macOS", "scroll_touchpad": "ignored on macOS", "no_close_for": "not supported yet",
         "content": "ignored on macOS", "persistent_size": "not supported yet", "pseudo": "ignored on macOS",
         "group": "groups are not supported", "pin": "not supported yet", "fullscreen_state": "use fullscreen = true",
-        "min_size": "not supported yet", "max_size": "not supported yet", "no_follow_mouse": "not supported yet",
+        "max_size": "not supported yet", "no_follow_mouse": "not supported yet",
     ]
 
     static let unsupportedMatchFields: Set<String> = [
@@ -328,10 +330,14 @@ struct ConfigBuilder {
                 let raw = try text()
                 guard let selector = MonitorSelector(parsing: raw) else { throw fail("invalid monitor \"\(raw)\"") }
                 effects.monitor = selector
-            case "size", "move":
+            case "size", "move", "min_size":
                 let raw = try text()
                 if let problem = RuleExpression.validatePair(raw) { throw fail("\(key): \(problem)") }
-                if key == "size" { effects.size = raw } else { effects.move = raw }
+                switch key {
+                case "size": effects.size = raw
+                case "move": effects.move = raw
+                default: effects.minSize = raw
+                }
             case "center": effects.center = try flag()
             case "fullscreen": if try flag() { effects.fullscreen = .fullscreen }
             case "maximize": if try flag() { effects.fullscreen = .maximized }
@@ -391,7 +397,7 @@ struct ConfigBuilder {
                 rule.persistent = flag
             case "layout":
                 guard let text = value.text, let kind = LayoutKind(rawValue: text) else {
-                    throw fail("layout must be \"dwindle\" or \"master\"")
+                    throw fail("layout must be one of \(Self.layoutNames)")
                 }
                 rule.layout = kind
             case "gaps_in", "gaps_out":

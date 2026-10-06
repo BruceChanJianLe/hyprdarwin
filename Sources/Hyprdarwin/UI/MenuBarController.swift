@@ -26,6 +26,7 @@ final class MenuBarController: NSObject {
     var onTogglePause: (() -> Void)?
     var onOpenAccessibilitySettings: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onAbout: (() -> Void)?
 
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
@@ -53,12 +54,14 @@ final class MenuBarController: NSObject {
         case .paused: symbol = "pause.rectangle"
         case .configError: symbol = "exclamationmark.triangle"
         }
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "hyprdarwin")
-        image?.isTemplate = true
-        item.button?.image = image
+        // the logo while all is well; a symbol that says what is wrong otherwise
+        let image = state.status == .running ? Self.logo : nil
+        item.button?.image = image ?? NSImage(systemSymbolName: symbol, accessibilityDescription: "hyprdarwin")
+        item.button?.image?.isTemplate = true
         var title = state.status == .waitingForAccessibility ? "" : state.workspace
         if let special = state.special { title += " · \(special)" }
-        if !state.submap.isEmpty { title += " [\(state.submap)]" }
+        // an active submap stands out in capitals: "2 · RESIZE"
+        if !state.submap.isEmpty { title += " · \(state.submap.uppercased())" }
         item.button?.title = title.isEmpty ? "" : " \(title)"
         item.button?.toolTip = "hyprdarwin"
 
@@ -71,6 +74,7 @@ final class MenuBarController: NSObject {
         case .configError: statusText = "Running, but the config has errors"
         }
         menu.addItem(disabled(statusText))
+        menu.addItem(disabled("Version \(BuildInfo.current)"))
         if state.status != .waitingForAccessibility {
             var workspace = "Workspace \(state.workspace)"
             if let special = state.special { workspace += " (special:\(special) open)" }
@@ -99,8 +103,19 @@ final class MenuBarController: NSObject {
         pause.isEnabled = state.status != .waitingForAccessibility
         menu.addItem(pause)
         menu.addItem(.separator())
+        menu.addItem(action("About hyprdarwin", #selector(about)))
         menu.addItem(action("Quit hyprdarwin", #selector(quit), key: "q"))
     }
+
+    /// The monochrome droplet from the app bundle (nil under `swift run`).
+    private static let logo: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "svg"),
+              let image = NSImage(contentsOf: url), image.size.height > 0 else { return nil }
+        let height = 16.0
+        image.size = NSSize(width: (height * image.size.width / image.size.height).rounded(), height: height)
+        image.accessibilityDescription = "hyprdarwin"
+        return image
+    }()
 
     private func disabled(_ title: String) -> NSMenuItem {
         let entry = NSMenuItem(title: title, action: nil, keyEquivalent: "")
@@ -120,4 +135,5 @@ final class MenuBarController: NSObject {
     @objc private func togglePause() { onTogglePause?() }
     @objc private func openAccessibility() { onOpenAccessibilitySettings?() }
     @objc private func quit() { onQuit?() }
+    @objc private func about() { onAbout?() }
 }

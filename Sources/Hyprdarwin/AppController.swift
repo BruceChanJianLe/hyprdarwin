@@ -50,7 +50,7 @@ final class AppController {
     // MARK: - Lifecycle
 
     func launch() {
-        Log.info("hyprdarwin starting (pid \(ProcessInfo.processInfo.processIdentifier)), config \(watcher.path)")
+        Log.info("hyprdarwin \(BuildInfo.current) starting (pid \(ProcessInfo.processInfo.processIdentifier)), config \(watcher.path)")
         menu.onReload = { [weak self] in self?.reloadConfig() }
         menu.onOpenConfig = { [weak self] in self?.openConfig() }
         menu.onShowMessages = { [weak self] in self?.showMessages() }
@@ -59,6 +59,13 @@ final class AppController {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }
         menu.onQuit = { NSApp.terminate(nil) }
+        menu.onAbout = {
+            NSApp.activate()
+            NSApp.orderFrontStandardAboutPanel(options: [
+                .applicationVersion: BuildInfo.current.description,
+                .version: "",
+            ])
+        }
         banner.onClick = { [weak self] in self?.showMessages() }
         watcher.onChange = { [weak self] in self?.reloadConfig() }
 
@@ -88,6 +95,7 @@ final class AppController {
         updateCapsRemap()
         applier.onFloatingMoved = { [weak self] id, frame in self?.model.floatingWindowMoved(id, frame: frame) }
         applier.onUserDrop = { [weak self] id, point in self?.dropped(id, at: point) ?? false }
+        applier.onSizeRefused = { [weak self] id, wanted in self?.sizeRefused(id, wanted: wanted) }
         input.onBind = { [weak self] index in self?.runBind(index) }
         input.start()
         source.onEvent = { [weak self] event in self?.handle(event) }
@@ -309,6 +317,12 @@ final class AppController {
                 Log.info("submap: \(name.isEmpty ? "reset" : name)")
             case .reload:
                 reloadConfig()
+            case .rewriteAll:
+                // re-tile: write every window again, even ones the applier had
+                // accepted elsewhere, and re-list every app's windows
+                Log.info("re-tile: rewriting every window")
+                applier.reset()
+                source.refreshAll()
             case .exit:
                 NSApp.terminate(nil)
             case .failed(let message):
@@ -411,6 +425,19 @@ final class AppController {
         let listed = Dictionary(uniqueKeysWithValues: source.pids.map { ($0, known[$0] ?? []) })
         for pid in listingProbe.appsToRelist(listed: listed, onScreen: WindowStack.onScreenWindows(), now: Date()) {
             source.refresh(pid: pid)
+        }
+    }
+
+    /// An app kept a window larger than asked. Readback right after a write
+    /// can be stale, so look again once the window has settled (resize
+    /// notifications keep its frame current) before taking it as a minimum.
+    private func sizeRefused(_ id: WindowID, wanted: CGSize) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.managing, !self.paused, let window = self.model.windows[id],
+                  let minimum = self.model.windowKeptSize(id, wanted: wanted, plan: self.lastPlan) else { return }
+            let limits = [minimum.width > 0 ? "\(Int(minimum.width)) wide" : nil, minimum.height > 0 ? "\(Int(minimum.height)) tall" : nil]
+            Log.info("window \(id) (\(window.info.bundleID)) will not shrink below \(limits.compactMap { $0 }.joined(separator: " or ")); tiling around it")
+            self.refresh()
         }
     }
 
@@ -573,7 +600,10 @@ final class AppController {
             case .hidden(let origin)?: placement = "parked at (\(Int(origin.x)),\(Int(origin.y)))"
             case nil: placement = "-"
             }
-            lines.append("  window \(window.id) \(window.info.bundleID) \"\(window.info.title)\" ws \(window.workspace) \(window.isFloating ? "floating" : "tiled") planned \(placement) actual \(FrameApplier.describe(window.info.frame))\(window.id == model.focusedWindow ? " (focused)" : "")")
+            let minimum = window.minimumSize
+            let minText = minimum == .zero ? "" : " min \(Int(minimum.width))x\(Int(minimum.height))"
+            let mode = window.isFloating ? "floating" : plan.overflow.contains(window.id) ? "tiled (overflow, floating on top)" : "tiled"
+            lines.append("  window \(window.id) \(window.info.bundleID) \"\(window.info.title)\" ws \(window.workspace) \(mode)\(minText) planned \(placement) actual \(FrameApplier.describe(window.info.frame))\(window.id == model.focusedWindow ? " (focused)" : "")")
         }
         Log.info(lines.joined(separator: "\n"))
     }
