@@ -1,0 +1,171 @@
+name: release
+
+# Pushing a tag vX.Y.Z (equal to the VERSION file) tests, builds and signs the
+# app with the stable identity, publishes hyprdarwin-X.Y.Z.zip on a GitHub
+# Release and commits the rendered cask to BruceChanJianLe/homebrew-hyprdarwin.
+# Run it by hand with an existing tag to publish again: a release that already
+# has its zip is reused as is (same bytes, same sha256), not rebuilt.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish, e.g. v0.2.0
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  TAP_REPO: BruceChanJianLe/homebrew-hyprdarwin
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256: ${{ steps.sha256.outputs.sha256 }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Check the tag against VERSION
+        id: version
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag $TAG is not vX.Y.Z"
+            exit 1
+          fi
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match VERSION $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ZIP=hyprdarwin-$version.zip" >> "$GITHUB_ENV"
+
+      - name: Look for an existing release
+        id: existing
+        run: |
+          if gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null | grep -qxF "$ZIP"; then
+            echo "release $TAG already has $ZIP: reusing it"
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reuse=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the published zip
+        if: steps.existing.outputs.reuse == 'true'
+        run: |
+          mkdir -p build
+          gh release download "$TAG" --pattern "$ZIP" --dir build --clobber
+
+      - name: Toolchain
+        if: steps.existing.outputs.reuse != 'true'
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Test
+        if: steps.existing.outputs.reuse != 'true'
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Signing identity
+        if: steps.existing.outputs.reuse != 'true'
+        env:
+          HYPRDARWIN_SIGNING_P12: ${{ secrets.HYPRDARWIN_SIGNING_P12 }}
+          HYPRDARWIN_SIGNING_PASSWORD: ${{ secrets.HYPRDARWIN_SIGNING_PASSWORD }}
+        run: |
+          # a release signed with a throwaway identity would cost every
+          # user their Accessibility grant on upgrade
+          if [ -z "$HYPRDARWIN_SIGNING_P12" ]; then
+            echo "::error::HYPRDARWIN_SIGNING_P12 is not set; releases need the stable signing identity"
+            exit 1
+          fi
+          scripts/ci-signing-keychain.sh
+
+      - name: Build app
+        if: steps.existing.outputs.reuse != 'true'
+        run: |
+          scripts/build-app.sh
+          # ditto keeps the signature (extended attributes, symlinks) intact
+          ditto -c -k --keepParent build/hyprdarwin.app "build/$ZIP"
+
+      - name: Checksum
+        id: sha256
+        run: |
+          cd build
+          shasum -a 256 "$ZIP" > "$ZIP.sha256"
+          cat "$ZIP.sha256"
+          echo "sha256=$(cut -d' ' -f1 "$ZIP.sha256")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        if: steps.existing.outputs.reuse != 'true'
+        run: |
+          version=${{ steps.version.outputs.version }}
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "build/$ZIP" "build/$ZIP.sha256" --clobber
+          else
+            gh release create "$TAG" "build/$ZIP" "build/$ZIP.sha256" \
+              --verify-tag --title "hyprdarwin $version" --generate-notes
+          fi
+
+  tap:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Render the cask
+        run: |
+          mkdir -p tap-out/Casks
+          scripts/render-cask.sh "${{ needs.release.outputs.version }}" "${{ needs.release.outputs.sha256 }}" \
+            > tap-out/Casks/hyprdarwin.rb
+          cp packaging/homebrew/README.md tap-out/README.md
+          cat tap-out/Casks/hyprdarwin.rb
+
+      - name: Commit to the tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is not set; see README (Releasing)"
+            exit 1
+          fi
+          branch=$(gh api "repos/$TAP_REPO" --jq .default_branch)
+          git clone "https://x-access-token:$GH_TOKEN@github.com/$TAP_REPO.git" tap
+          cd tap
+          # a brand-new tap has no commits yet: start its default branch
+          if ! git rev-parse -q --verify HEAD >/dev/null; then
+            git symbolic-ref HEAD "refs/heads/$branch"
+          fi
+          mkdir -p Casks
+          cp ../tap-out/Casks/hyprdarwin.rb Casks/hyprdarwin.rb
+          cp ../tap-out/README.md README.md
+          git add Casks/hyprdarwin.rb README.md
+          if git diff --cached --quiet; then
+            echo "tap already has hyprdarwin $VERSION"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "hyprdarwin $VERSION"
+          git push origin "HEAD:refs/heads/$branch"
