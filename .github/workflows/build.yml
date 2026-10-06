@@ -37,6 +37,21 @@ jobs:
       - name: Test
         run: swift test -Xswiftc -warnings-as-errors
 
+      - name: Audit the Homebrew cask
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_ENV_HINTS: "1"
+        run: |
+          # offline audit and style of the template, rendered with a dummy
+          # checksum into a throwaway local tap
+          brew tap-new --no-git hyprdarwin/ci
+          tap=$(brew --repository hyprdarwin/ci)
+          mkdir -p "$tap/Casks"
+          scripts/render-cask.sh "$(tr -d '[:space:]' < VERSION)" "$(printf x | shasum -a 256 | cut -d' ' -f1)" \
+            > "$tap/Casks/hyprdarwin.rb"
+          brew audit --cask --strict hyprdarwin/ci/hyprdarwin
+          brew style "$tap/Casks/hyprdarwin.rb"
+
       - name: Signing identity
         env:
           HYPRDARWIN_SIGNING_P12: ${{ secrets.HYPRDARWIN_SIGNING_P12 }}

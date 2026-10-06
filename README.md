@@ -13,7 +13,33 @@ Target: macOS 26 on Apple Silicon. This is a personal tool; it is not tested any
 
 ## Install
 
-The supported build is the GitHub Actions artifact (`.github/workflows/build.yml`): every push runs the tests, builds, signs and uploads `hyprdarwin-app`.
+### Homebrew
+
+```sh
+brew tap brucechanjianle/hyprdarwin
+brew install --cask brucechanjianle/hyprdarwin/hyprdarwin
+open /Applications/hyprdarwin.app
+```
+
+Upgrade with `brew upgrade --cask hyprdarwin`. The cask comes from the [BruceChanJianLe/homebrew-hyprdarwin](https://github.com/BruceChanJianLe/homebrew-hyprdarwin) tap, which the release workflow updates (see [Releasing](#releasing)). Uninstalling quits the app; `brew uninstall --zap` also removes its log and preferences, never your config.
+
+### nix-darwin
+
+With [nix-homebrew](https://github.com/zhaofengli/nix-homebrew):
+
+```nix
+homebrew = {
+  taps = [ "brucechanjianle/hyprdarwin" ];
+  casks = [ "brucechanjianle/hyprdarwin/hyprdarwin" ];
+};
+
+# Homebrew refuses to load casks from non-official taps until trusted.
+nix-homebrew.trust.casks = [ "brucechanjianle/hyprdarwin/hyprdarwin" ];
+```
+
+### Latest CI build
+
+Every push runs `.github/workflows/build.yml`: tests, then a signed `hyprdarwin-app` artifact. To try an unreleased build:
 
 ```sh
 run=$(gh run list --repo BruceChanJianLe/hyprdarwin --workflow build --branch master --status success --limit 1 --json databaseId --jq '.[0].databaseId')
@@ -21,6 +47,8 @@ gh run download "$run" --repo BruceChanJianLe/hyprdarwin --name hyprdarwin-app -
 ditto -x -k /tmp/hyprdarwin/hyprdarwin.zip /Applications
 open /Applications/hyprdarwin.app
 ```
+
+### Running
 
 hyprdarwin lives in the menu bar (no Dock icon). Its menu shows the version, e.g. `Version 0.2.0 (abc1234, run 57)`: the release, the git commit and the CI run that built it. So do About hyprdarwin, the first log line and `/Applications/hyprdarwin.app/Contents/MacOS/hyprdarwin --version`. The release number lives in the `VERSION` file.
 
@@ -56,6 +84,17 @@ swift build
 swift test      # see AGENTS.md if the Swift Testing macro plugin is not found
 scripts/build-app.sh   # -> build/hyprdarwin.app, signed with "hyprdarwin-local" if present, else ad-hoc
 ```
+
+### Releasing
+
+1. Bump `VERSION` (e.g. `0.3.0`) and merge it to `master`.
+2. Tag that commit and push the tag: `git tag v0.3.0 && git push origin v0.3.0`.
+
+`.github/workflows/release.yml` then checks the tag equals `v` + `VERSION`, runs the tests, builds and signs the app with the stable identity (it refuses to release without `HYPRDARWIN_SIGNING_P12`), publishes `hyprdarwin-0.3.0.zip` and its `.sha256` on a GitHub Release, renders `packaging/homebrew/hyprdarwin.rb` into the tap's `Casks/hyprdarwin.rb` and commits it. Change the cask and the tap's README in `packaging/homebrew/`, never in the tap.
+
+The tap commit needs the `HOMEBREW_TAP_TOKEN` secret: a fine-grained personal access token limited to BruceChanJianLe/homebrew-hyprdarwin with **Contents: Read and write**. If publishing fails, fix the cause and run the workflow by hand (Actions > release > Run workflow, with the tag, or `gh workflow run release -f tag=v0.3.0`): a release that already has its zip is reused, not rebuilt, so the checksum stays the same.
+
+The cask removes the quarantine attribute after install because the app is self-signed, not notarized.
 
 ## Caps Lock as the Hypr key
 
