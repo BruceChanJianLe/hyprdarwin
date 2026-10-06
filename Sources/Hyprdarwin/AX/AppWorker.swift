@@ -11,8 +11,9 @@ import ApplicationServices
 import HyprdarwinCore
 
 enum WorkerEvent {
-    /// Every manageable window the app has right now.
-    case windows(pid: pid_t, [WindowInfo], initial: Bool)
+    /// Every manageable window the app lists right now, and the ones it
+    /// has on another Space (another desktop, or native fullscreen).
+    case windows(pid: pid_t, [WindowInfo], away: Set<WindowID>, initial: Bool)
     case destroyed(pid: pid_t, WindowID)
     case frame(WindowID, CGRect)
     case title(WindowID, String)
@@ -224,7 +225,7 @@ final class AppWorker {
 
     private func snapshot() {
         if hidden {
-            send(.windows(pid: pid, [], initial: initial && !sentFirstSnapshot))
+            send(.windows(pid: pid, [], away: [], initial: initial && !sentFirstSnapshot))
             sentFirstSnapshot = true
             return
         }
@@ -241,6 +242,7 @@ final class AppWorker {
             return
         }
         var infos: [WindowInfo] = []
+        var away: Set<WindowID> = []
         var present: Set<WindowID> = []
         for element in list {
             guard let id = windowID(of: element) else { continue }
@@ -248,13 +250,26 @@ final class AppWorker {
             AXUIElementSetMessagingTimeout(element, 1.0)
             elements[id] = element
             subscribe(element, id)
-            if let info = readInfo(element, id: id) { infos.append(info) }
+            // native fullscreen windows live in their own Space; leave them
+            // alone, in their place for when they come back
+            if boolAttribute(element, "AXFullScreen") == true {
+                away.insert(id)
+            } else if let info = readInfo(element, id: id) {
+                infos.append(info)
+            }
         }
+        // apps list only the current Space's windows. One no longer listed
+        // but still on a Space is on another one; keep its element so its
+        // destroyed notification still counts. One on no Space is closed.
         for id in elements.keys where !present.contains(id) {
-            elements[id] = nil
-            subscribed.remove(id)
+            if SkyLight.isOnASpace(id) == true {
+                away.insert(id)
+            } else {
+                elements[id] = nil
+                subscribed.remove(id)
+            }
         }
-        send(.windows(pid: pid, infos, initial: initial && !sentFirstSnapshot))
+        send(.windows(pid: pid, infos, away: away, initial: initial && !sentFirstSnapshot))
         sentFirstSnapshot = true
     }
 
@@ -263,8 +278,6 @@ final class AppWorker {
         let subrole = stringAttribute(element, kAXSubroleAttribute) ?? ""
         guard Self.admittedSubroles.contains(subrole) else { return nil }
         guard boolAttribute(element, kAXMinimizedAttribute) != true else { return nil }
-        // native fullscreen windows live in their own Space; leave them alone
-        guard boolAttribute(element, "AXFullScreen") != true else { return nil }
         guard let frame = readFrame(element), frame.width > 30, frame.height > 30 else { return nil }
         var settable = DarwinBoolean(false)
         let resizable = AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success ? settable.boolValue : true

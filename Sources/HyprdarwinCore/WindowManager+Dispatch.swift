@@ -67,7 +67,7 @@ extension WindowManager {
             guard let monitor = resolve(monitor: selector) else { return [] }
             return focusMonitor(monitor)
         case .focusLast:
-            guard let previous = focusHistory.dropLast().last(where: { windows[$0] != nil }) else { return [] }
+            guard let previous = focusHistory.dropLast().last(where: { windows[$0]?.isAway == false }) else { return [] }
             var effects = externalFocus(previous)
             effects += focus(previous, warp: true)
             return effects
@@ -253,7 +253,7 @@ extension WindowManager {
         let alreadyFocused = focusedWorkspaceID == target
         var effects = show(workspace: target)
         guard !alreadyFocused || focusedWindow.flatMap({ windows[$0]?.workspace }) != target else { return effects }
-        if let id = workspace.lastFocused.flatMap({ windows[$0]?.workspace == target ? $0 : nil }) ?? mostRecent(on: target) {
+        if let id = focusTarget(on: target) {
             effects += focus(id, warp: true)
         } else {
             if focusedWindow != nil {
@@ -273,7 +273,7 @@ extension WindowManager {
         guard let state = monitorStates[monitor.id] else { return [] }
         setFocusedMonitor(monitor.id)
         let id = state.special.map { WorkspaceID.special($0) } ?? state.activeWorkspace
-        if let window = workspaces[id]?.lastFocused.flatMap({ windows[$0]?.workspace == id ? $0 : nil }) ?? mostRecent(on: id) {
+        if let window = focusTarget(on: id) {
             return focus(window, warp: true)
         }
         if focusedWindow != nil {
@@ -302,7 +302,7 @@ extension WindowManager {
                 createWorkspace(id, on: monitor.id)
             }
             effects += show(workspace: id)
-            if let window = workspaces[id]?.lastFocused.flatMap({ windows[$0]?.workspace == id ? $0 : nil }) ?? mostRecent(on: id) {
+            if let window = focusTarget(on: id) {
                 effects += focus(window, warp: true)
             }
         } else if openHere {
@@ -335,7 +335,7 @@ extension WindowManager {
         }
         setFocusedMonitor(target.id)
         collectGarbage()
-        if let window = workspaces[id]?.lastFocused { return focus(window, warp: true) }
+        if let window = focusTarget(on: id) { return focus(window, warp: true) }
         return []
     }
 
@@ -553,7 +553,16 @@ extension WindowManager {
         var result: [WindowID: CGRect] = [:]
         var cascade = 0.0
         for window in windows.values.sorted(by: { $0.id < $1.id }) {
-            guard case .hidden? = plan.placements[window.id] else { continue }
+            // one on another Space stays parked there when its workspace is hidden
+            let parked: Bool
+            if window.isAway {
+                parked = !isVisible(window.workspace)
+            } else if case .hidden? = plan.placements[window.id] {
+                parked = true
+            } else {
+                parked = false
+            }
+            guard parked else { continue }
             let monitor = workspaces[window.workspace].flatMap { self.monitor(id: $0.monitorID) } ?? monitors.first
             guard let area = monitor?.visibleFrame else { continue }
             var frame = window.isFloating ? window.floatingFrame : CGRect(origin: .zero, size: window.info.frame.size)

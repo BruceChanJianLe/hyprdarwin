@@ -336,9 +336,11 @@ final class AppController {
     private func handle(_ event: WorkerEvent) {
         guard managing else { return }
         switch event {
-        case let .windows(pid, infos, initial):
-            let changes = model.applyListing(infos, previous: known[pid] ?? [], initial: initial)
-            known[pid] = infos.isEmpty ? nil : Set(infos.map(\.id))
+        case let .windows(pid, infos, away, initial):
+            let changes = model.applyListing(infos, away: away, previous: known[pid] ?? [], initial: initial)
+            let has = Set(infos.map(\.id)).union(away)
+            known[pid] = has.isEmpty ? nil : has
+            var returned = false
             for change in changes {
                 switch change {
                 case let .replaced(old, new):
@@ -349,6 +351,11 @@ final class AppController {
                     focusTracker.forget(id)
                     Log.info("window \(id) removed: its app no longer lists it")
                     perform(effects)
+                case .away(let id):
+                    Log.info("window \(id) is on another Space: keeping its place")
+                case .returned(let id):
+                    Log.info("window \(id) is back from another Space")
+                    returned = true
                 case let .added(id, isNew, effects):
                     if let info = model.windows[id]?.info {
                         Log.info("window \(id) \(isNew ? "opened" : "found"): \(info.bundleID) \"\(info.title)\" \(info.subrole)")
@@ -356,6 +363,12 @@ final class AppController {
                     perform(effects)
                     if isNew { opened(id) }
                 }
+            }
+            if returned, model.focusedWindow == nil {
+                // back on this Space: the keyboard may already be on a
+                // returning window, keyed while it was still away
+                lastOSFocus = nil
+                source.reportFrontmostFocus()
             }
         case let .destroyed(pid, id):
             known[pid]?.remove(id)
@@ -422,7 +435,10 @@ final class AppController {
     /// its windows now instead of at the next periodic re-list (ListingProbe).
     private func probeListings() {
         guard managing else { return }
-        let listed = Dictionary(uniqueKeysWithValues: source.pids.map { ($0, known[$0] ?? []) })
+        // windows on another Space are not on screen, and their app is not listing them
+        let listed = Dictionary(uniqueKeysWithValues: source.pids.map { pid in
+            (pid, (known[pid] ?? []).filter { model.windows[$0]?.isAway != true })
+        })
         for pid in listingProbe.appsToRelist(listed: listed, onScreen: WindowStack.onScreenWindows(), now: Date()) {
             source.refresh(pid: pid)
         }
@@ -602,7 +618,8 @@ final class AppController {
             }
             let minimum = window.minimumSize
             let minText = minimum == .zero ? "" : " min \(Int(minimum.width))x\(Int(minimum.height))"
-            let mode = window.isFloating ? "floating" : plan.overflow.contains(window.id) ? "tiled (overflow, floating on top)" : "tiled"
+            var mode = window.isFloating ? "floating" : plan.overflow.contains(window.id) ? "tiled (overflow, floating on top)" : "tiled"
+            if window.isAway { mode += " (away on another Space)" }
             lines.append("  window \(window.id) \(window.info.bundleID) \"\(window.info.title)\" ws \(window.workspace) \(mode)\(minText) planned \(placement) actual \(FrameApplier.describe(window.info.frame))\(window.id == model.focusedWindow ? " (focused)" : "")")
         }
         Log.info(lines.joined(separator: "\n"))

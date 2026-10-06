@@ -112,6 +112,6 @@ final class WindowSource {
     private func detach(_ pid: pid_t) {
         guard let worker = workers.removeValue(forKey: pid) else { return }
         worker.stop()
-        onEvent?(.windows(pid: pid, [], initial: false))
+        onEvent?(.windows(pid: pid, [], away: [], initial: false))
     }
 }

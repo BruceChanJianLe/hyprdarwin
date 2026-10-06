@@ -66,6 +66,11 @@ public struct ManagedWindow: Equatable, Sendable {
     public var learnedMinSize = CGSize.zero
     /// Order of arrival: the newest windows give way when minimums do not fit.
     public var sequence = 0
+    /// On another macOS Space (another desktop, or its app's native
+    /// fullscreen Space), so its app does not list it for now. It keeps its
+    /// workspace and its place in the layout, but takes no room, is not
+    /// placed and is not focused until it is back.
+    public var isAway = false
 
     public init(info: WindowInfo, workspace: WorkspaceID, isFloating: Bool) {
         self.info = info

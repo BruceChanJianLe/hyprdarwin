@@ -7,6 +7,7 @@
 import ApplicationServices
 import CoreGraphics
 import Darwin
+import Foundation
 
 /// AXUIElement -> CGWindowID. Exported by HIServices.
 @_silgen_name("_AXUIElementGetWindow")
@@ -26,6 +27,8 @@ enum SkyLight {
     private typealias SetFrontProcess = @convention(c) (UnsafeMutableRawPointer, UInt32, UInt32) -> CGError
     private typealias PostEventRecord = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<UInt8>) -> CGError
     private typealias ProcessForPID = @convention(c) (pid_t, UnsafeMutableRawPointer) -> OSStatus
+    private typealias MainConnectionID = @convention(c) () -> Int32
+    private typealias CopySpacesForWindows = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
 
     private static let skyLight = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
     private static let hiServices = dlopen("/System/Library/Frameworks/ApplicationServices.framework/Frameworks/HIServices.framework/HIServices", RTLD_LAZY)
@@ -33,6 +36,8 @@ enum SkyLight {
     private static let setFrontProcess: SetFrontProcess? = symbol(skyLight, "_SLPSSetFrontProcessWithOptions")
     private static let postEventRecord: PostEventRecord? = symbol(skyLight, "SLPSPostEventRecordTo")
     private static let processForPID: ProcessForPID? = symbol(hiServices, "GetProcessForPID")
+    private static let mainConnectionID: MainConnectionID? = symbol(skyLight, "SLSMainConnectionID")
+    private static let copySpacesForWindows: CopySpacesForWindows? = symbol(skyLight, "SLSCopySpacesForWindows")
 
     private static func symbol<T>(_ handle: UnsafeMutableRawPointer?, _ name: String) -> T? {
         guard let handle, let pointer = dlsym(handle, name) else { return nil }
@@ -40,6 +45,19 @@ enum SkyLight {
     }
 
     private static let userGenerated: UInt32 = 0x200
+    /// Every Space: the current ones, the others and the user's (yabai's mask).
+    private static let allSpaces: Int32 = 0x7
+
+    /// Whether the window is on any macOS Space, current or not. A window
+    /// on another desktop or in native fullscreen is; one its app closed by
+    /// ordering it out (but keeps alive), or that no longer exists, is on
+    /// none. Nil when unavailable.
+    static func isOnASpace(_ windowID: CGWindowID) -> Bool? {
+        guard let mainConnectionID, let copySpacesForWindows else { return nil }
+        let ids = [NSNumber(value: windowID)] as CFArray
+        guard let spaces = copySpacesForWindows(mainConnectionID(), allSpaces, ids)?.takeRetainedValue() as? [NSNumber] else { return false }
+        return !spaces.isEmpty
+    }
 
     /// Front the owning process with `windowID` as its key window, the way
     /// yabai's window_manager_focus_window does. False when unavailable.

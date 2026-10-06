@@ -187,6 +187,111 @@ private func twoBraveWindows() -> (WindowManager, listed: Set<WindowID>) {
         guard case .added(5, isNew: false, _) = adopted.first else { Issue.record("seen before, so adopted"); return }
     }
 
+    /// The captain's report: a trip to another macOS Space and back. Apps
+    /// list only the current Space's windows, so while away every window
+    /// leaves the lists, yet each keeps its workspace and tile order, and on
+    /// return nothing opens again or lands on another workspace.
+    @Test func spaceTripKeepsWorkspacesAndTileOrder() {
+        let manager = makeManager()
+        manager.applyListing([window(1), window(2), window(3)], previous: [], initial: true)
+        manager.applyListing([window(5, pid: safari, bundle: "com.apple.Safari")], previous: [], initial: true)
+        manager.externalFocus(3)
+        _ = manager.dispatch(.moveToWorkspace(.id(.numbered(8)), follow: false))
+        manager.externalFocus(2)
+        let layouts = manager.workspaces.mapValues(\.layout)
+        let assigned = manager.windows.mapValues(\.workspace)
+        let plan = manager.computePlan()
+
+        // on another Space: nothing is listed, every window is still on a Space
+        let braveAway = manager.applyListing([], away: [1, 2, 3], previous: [1, 2, 3], initial: false)
+        let safariAway = manager.applyListing([], away: [5], previous: [5], initial: false)
+        #expect(braveAway == [.away(1), .away(2), .away(3)] && safariAway == [.away(5)])
+        #expect(manager.windows.mapValues(\.workspace) == assigned)
+        #expect(manager.computePlan().placements.isEmpty, "nothing is written or parked while away")
+        #expect(manager.focusedWindow == nil)
+        // a window over there tiles alone: the away ones take no room
+        let opened = manager.applyListing([window(7, pid: safari, bundle: "com.apple.Safari")], away: [5], previous: [5], initial: false)
+        guard case .added(7, isNew: true, _) = opened.first else { Issue.record("a new window on the other Space"); return }
+        #expect(manager.computePlan().frame(of: 7) == screen.visibleFrame)
+
+        // back: listed again (window 7 is now the one away)
+        let braveBack = manager.applyListing([window(1), window(2), window(3)], previous: [1, 2, 3], initial: false)
+        let safariBack = manager.applyListing([window(5, pid: safari, bundle: "com.apple.Safari")], away: [7], previous: [5, 7], initial: false)
+        #expect(braveBack == [.returned(1), .returned(2), .returned(3)])
+        #expect(safariBack == [.away(7), .returned(5)])
+        #expect(manager.windows.filter { $0.key != 7 }.mapValues(\.workspace) == assigned)
+        #expect(manager.workspaces[.numbered(8)]?.layout == layouts[.numbered(8)])
+        let order = manager.workspaces[.numbered(1)]?.layout.windows ?? []
+        #expect(order.filter { $0 != 7 } == layouts[.numbered(1)]?.windows, "the tile order is kept")
+        let back = manager.computePlan()
+        for id in [1, 2, 3, 5] as [WindowID] { #expect(back.placements[id] == plan.placements[id], "window \(id) is where it was") }
+        #expect(back.placements[7] == nil)
+    }
+
+    /// Window 2 goes native fullscreen: it moves to its own Space, where its
+    /// app lists it as fullscreen and the others not at all. Back on the
+    /// desktop the others share the room; when it leaves fullscreen it takes
+    /// its old tile again.
+    @Test func nativeFullscreenEnterAndExitKeepsThePlace() {
+        let manager = makeManager()
+        manager.applyListing([window(1), window(2), window(3)], previous: [], initial: true)
+        manager.externalFocus(2)
+        let layout = manager.workspaces[.numbered(1)]?.layout
+        let plan = manager.computePlan()
+
+        // on its fullscreen Space: 2 is listed but fullscreen, 1 and 3 elsewhere
+        #expect(manager.applyListing([], away: [1, 2, 3], previous: [1, 2, 3], initial: false) == [.away(1), .away(2), .away(3)])
+        #expect(manager.externalFocus(2).isEmpty && manager.focusedWindow == nil, "the keyboard on it changes no workspace")
+        // swiping back to the desktop while it stays fullscreen
+        #expect(manager.applyListing([window(1), window(3)], away: [2], previous: [1, 2, 3], initial: false) == [.returned(1), .returned(3)])
+        let desktop = manager.computePlan()
+        #expect(desktop.placements[2] == nil)
+        #expect(desktop.frame(of: 1).map { $0.width + desktop.frame(of: 3)!.width } == screen.visibleFrame.width, "no gap where 2 was")
+        for direction in [Direction.left, .right, .up, .down] {
+            #expect(!manager.dispatch(.focusDirection(direction)).contains(.focus(2)))
+        }
+        #expect(!manager.dispatch(.cycleWindows(.all, reverse: false)).contains(.focus(2)))
+
+        // it leaves fullscreen
+        #expect(manager.applyListing([window(1), window(2), window(3)], previous: [1, 2, 3], initial: false) == [.returned(2)])
+        #expect(manager.workspaces[.numbered(1)]?.layout == layout)
+        #expect(manager.computePlan() == plan)
+    }
+
+    /// A window closed for real is on no Space: it is not away, and goes at
+    /// once, also while it was away and while other windows are away.
+    @Test func realCloseStillDropsPromptly() {
+        let manager = makeManager()
+        manager.applyListing([window(1), window(2), window(3)], previous: [], initial: true)
+        manager.externalFocus(3)
+        #expect(manager.applyListing([window(1), window(3)], away: [], previous: [1, 2, 3], initial: false) == [.removed(2, effects: [])])
+        #expect(manager.workspaces[.numbered(1)]?.layout.windows == [1, 3])
+
+        // away, then closed over there (or before it came back)
+        manager.applyListing([window(3)], away: [1], previous: [1, 3], initial: false)
+        #expect(manager.applyListing([window(3)], away: [], previous: [1, 3], initial: false) == [.removed(1, effects: [])])
+        #expect(manager.windows.keys.sorted() == [3])
+    }
+
+    /// Focusing a window on another Space would make macOS switch to it:
+    /// focus fallbacks and workspace switches pass over away windows.
+    @Test func awayWindowsAreNeverFocused() {
+        let manager = makeManager()
+        manager.applyListing([window(1), window(2), window(3)], previous: [], initial: true)
+        manager.externalFocus(1)
+        manager.externalFocus(2)
+        manager.applyListing([window(2), window(3)], away: [1], previous: [1, 2, 3], initial: false)
+        let effects = manager.applyListing([window(3)], away: [1], previous: [1, 2, 3], initial: false)
+        #expect(effects == [.removed(2, effects: [.focus(3)])], "falls back to 3, not to the more recent 1")
+
+        manager.externalFocus(3)
+        _ = manager.dispatch(.moveToWorkspace(.id(.numbered(2)), follow: false))
+        #expect(manager.focusedWindow == nil, "only an away window is left on workspace 1")
+        #expect(!manager.dispatch(.focusLast).contains(.focus(1)))
+        #expect(manager.dispatch(.focusWorkspace(.id(.numbered(2)), onCurrentMonitor: false)).contains(.focus(3)))
+        #expect(!manager.dispatch(.focusWorkspace(.id(.numbered(1)), onCurrentMonitor: false)).contains(.focus(1)))
+    }
+
     @Test func emptyListingRemovesEverything() {
         let (manager, listed) = twoBraveWindows()
         let changes = manager.applyListing([], previous: listed, initial: false)

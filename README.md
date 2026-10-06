@@ -286,6 +286,7 @@ Some apps (Brave, WhatsApp...) refuse to shrink below a size. hyprdarwin learns 
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.
 - Floating windows go on top when focused; HYPR + SHIFT + V brings each floating window to the front in turn. macOS gives no way to keep them above tiles that are clicked afterwards.
 - **Borders** are drawn in the gap around the focused window, only while it really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every window inactive), and around the other visible windows when `general.col.inactive_border` or a rule's `border_color` is set. They are click-through overlays that never take focus. A `.fullscreen` window gets none.
+- Visiting another macOS Space, or an app's native fullscreen, leaves the tiling alone: every window keeps its workspace and tile, and is back in place on return. A window in native fullscreen keeps its tile for when it leaves fullscreen; meanwhile the others share its room.
 - Native macOS tabs (Ghostty, Finder, Terminal) are one tile: switching tabs keeps the tile where it is.
 - Logs: `~/Library/Logs/hyprdarwin.log` (set `HYPRDARWIN_DEBUG=1` for more), or `log stream --predicate 'subsystem == "io.github.brucechanjianle.hyprdarwin"'`. `kill -USR1 $(pgrep -x hyprdarwin)` writes the full window and workspace state to the log.
 
