@@ -1,15 +1,13 @@
 import AppKit
 import HyprdarwinConfig
+import HyprdarwinControl
 import HyprdarwinCore
+import HyprdarwinIPC
 
 /// Wires the pure model to the system: window source -> model -> plan ->
 /// applier, event tap -> binds -> dispatchers, config watcher -> reloads,
-/// menu bar. Everything here runs on the main thread.
-///
-/// Seams for the next milestone: `onEvent` is where the IPC event socket and
-/// the active border overlay will subscribe; `model` already answers every
-/// query the request socket needs; the settings window reads `activeConfig`
-/// and `messages`.
+/// IPC sockets (hyprdarwinctl requests, the event stream), menu bar and the
+/// read-only settings window. Everything here runs on the main thread.
 final class AppController {
     let model = WindowManager()
     private let source = WindowSource()
@@ -18,18 +16,22 @@ final class AppController {
     private let watcher = ConfigWatcher()
     private let menu = MenuBarController()
     private let banner = ErrorBanner()
-    private let messagesWindow = MessagesWindow()
+    private let settings = SettingsWindow()
     private let borders = BorderController()
-
-    /// Every model event, in Hyprland's `EVENT>>DATA` vocabulary.
-    var onEvent: ((WMEvent) -> Void)?
+    private let ipc = IPCService()
 
     private(set) var activeConfig = Config()
     private(set) var messages: [ConfigMessage] = []
     private var runtime: LuaConfigRuntime?
     private var configFailed = false
+    /// No config file ever loaded: the built-in default config is active.
+    private var runningDefaults = false
     private var pendingLoadActions: [RuntimeAction] = []
     private var startCallbacksFired = false
+    private var configFiles: [String] = []
+    private var lastLoad: Date?
+    /// While a hyprdarwinctl dispatch runs: the dispatchers that failed.
+    private var dispatchFailures: [String]?
 
     private var managing = false
     private var paused = false
@@ -53,7 +55,8 @@ final class AppController {
         Log.info("hyprdarwin \(BuildInfo.current) starting (pid \(ProcessInfo.processInfo.processIdentifier)), config \(watcher.path)")
         menu.onReload = { [weak self] in self?.reloadConfig() }
         menu.onOpenConfig = { [weak self] in self?.openConfig() }
-        menu.onShowMessages = { [weak self] in self?.showMessages() }
+        menu.onShowMessages = { [weak self] in self?.showSettings(.errors) }
+        menu.onShowSettings = { [weak self] in self?.showSettings(nil) }
         menu.onTogglePause = { [weak self] in self?.togglePause() }
         menu.onOpenAccessibilitySettings = {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
@@ -66,9 +69,16 @@ final class AppController {
                 .version: "",
             ])
         }
-        banner.onClick = { [weak self] in self?.showMessages() }
+        banner.onClick = { [weak self] in self?.showSettings(.errors) }
+        settings.onReload = { [weak self] in self?.reloadConfig() }
+        settings.onOpenConfig = { [weak self] in self?.openConfig() }
         watcher.onChange = { [weak self] in self?.reloadConfig() }
+        ipc.onRequest = { [weak self] request, reply in
+            reply(self?.answer(request) ?? IPCReply.error("hyprdarwin is shutting down"))
+        }
 
+        // before the config loads, so its exec_cmd calls inherit the signature
+        ipc.start()
         watcher.createDefaultIfMissing()
         reloadConfig()
         installSignalHandlers()
@@ -153,6 +163,7 @@ final class AppController {
         input.stop()
         source.stop()
         watcher.stop()
+        ipc.stop()
         Log.info("hyprdarwin stopped")
     }
 
@@ -161,8 +172,11 @@ final class AppController {
     func reloadConfig() {
         let result = ConfigLoader.load(path: watcher.path)
         messages = result.messages
+        configFiles = result.files
+        lastLoad = Date()
         if let config = result.config {
             configFailed = false
+            runningDefaults = false
             install(config, runtime: result.runtime)
             let summary = "\(config.binds.count) binds, \(config.windowRules.count) window rules, \(config.workspaceRules.count) workspace rules"
             Log.info("config loaded from \(watcher.path): \(summary)")
@@ -177,7 +191,10 @@ final class AppController {
             if runtime == nil {
                 // nothing loaded yet: run on the built-in defaults so binds still work
                 let fallback = ConfigLoader.load(source: DefaultConfig.text)
-                if let config = fallback.config { install(config, runtime: fallback.runtime) }
+                if let config = fallback.config {
+                    install(config, runtime: fallback.runtime)
+                    runningDefaults = true
+                }
                 messages.append(ConfigMessage(.info, "using the built-in default config until the error above is fixed"))
             }
         }
@@ -187,6 +204,7 @@ final class AppController {
         updateBanner()
         refresh()
         updateMenu()
+        updateSettings()
     }
 
     private func install(_ config: Config, runtime newRuntime: LuaConfigRuntime?) {
@@ -231,8 +249,52 @@ final class AppController {
         }
     }
 
-    private func showMessages() {
-        messagesWindow.show(messages: messages, path: watcher.path)
+    private func showSettings(_ tab: SettingsTab?) {
+        updateSettings(force: true)
+        settings.show(tab: tab)
+    }
+
+    /// The settings window shows the active config, as amended at runtime
+    /// (bind and rule handles toggled by Lua).
+    private func updateSettings(force: Bool = false) {
+        guard force || settings.isVisible else { return }
+        var status = SettingsState.Status.loaded
+        if configFailed { status = runningDefaults ? .failed : .rejected }
+        settings.update(SettingsState(
+            configPath: watcher.path, files: configFiles, loadedAt: lastLoad, status: status,
+            report: ConfigReport(config: activeConfig), messages: messages))
+    }
+
+    // MARK: - IPC
+
+    /// One hyprdarwinctl request.
+    private func answer(_ request: IPCRequest) -> String {
+        switch ControlCommand(request) {
+        case let .query(query, json):
+            let context = QueryContext(model: model, config: activeConfig, messages: messages, build: BuildInfo.current)
+            return query.reply(json: json, context: context)
+        case .dispatch(let code):
+            guard !code.isEmpty else { return IPCReply.error("dispatch needs a dispatcher, e.g. hyprdarwinctl dispatch 'hl.dsp.focus({ workspace = 2 })'") }
+            guard managing else { return IPCReply.error("not managing windows yet (waiting for the Accessibility permission)") }
+            guard !paused else { return IPCReply.error("hyprdarwin is paused") }
+            guard let runtime else { return IPCReply.error("no config is loaded") }
+            let outcome = runtime.evaluate(code)
+            for message in outcome.messages { Log.info("dispatch: \(message.text)") }
+            if let error = outcome.error { return IPCReply.error(error) }
+            Log.info("dispatch from hyprdarwinctl: \(code)")
+            dispatchFailures = []
+            run(outcome.actions)
+            let failures = dispatchFailures ?? []
+            dispatchFailures = nil
+            return failures.isEmpty ? IPCReply.ok : IPCReply.error(failures.joined(separator: "; "))
+        case .reload:
+            reloadConfig()
+            guard configFailed else { return IPCReply.ok }
+            let reason = messages.first { $0.severity == .error }?.text ?? "unknown error"
+            return IPCReply.error("config rejected, keeping the previous one: \(reason)")
+        case .unknown:
+            return IPCReply.unknownRequest
+        }
     }
 
     // MARK: - Binds and dispatch
@@ -257,6 +319,7 @@ final class AppController {
             messages.append(ConfigMessage(.warning, "\(context): \(error)"))
             banner.show(warning: "\(context): \(error)", extra: 0)
             updateMenu()
+            updateSettings()
         }
         run(outcome.actions)
     }
@@ -277,6 +340,8 @@ final class AppController {
             }
         }
         refresh()
+        // a bind or rule handle was toggled: the settings window shows it
+        if actions.contains(where: { if case .dispatch = $0 { false } else { true } }) { updateSettings() }
     }
 
     private func dispatch(_ dispatcher: Dispatcher) {
@@ -327,6 +392,7 @@ final class AppController {
                 NSApp.terminate(nil)
             case .failed(let message):
                 Log.info("dispatch failed: \(message)")
+                dispatchFailures?.append(message)
             }
         }
     }
@@ -471,8 +537,11 @@ final class AppController {
         lastPlan = model.computePlan()
         if !paused { applier.apply(lastPlan, model: model) }
         updateBorders()
+        var lines: [String] = []
         for event in model.drainEvents() {
-            Log.debug("event \(event.line)")
+            let eventLines = model.eventLines(event)
+            Log.debug("event \(eventLines.joined(separator: " | "))")
+            lines += eventLines
             switch event {
             case .workspace, .activeSpecial:
                 lastWorkspaceChange = Date()
@@ -487,8 +556,8 @@ final class AppController {
             default:
                 break
             }
-            onEvent?(event)
         }
+        ipc.publish(lines)
         updateMenu()
     }
 
@@ -576,8 +645,8 @@ final class AppController {
         }
     }
 
-    /// `kill -USR1 <pid>` writes the model state to the log (until the
-    /// hyprdarwinctl socket exists).
+    /// `kill -USR1 <pid>` writes the model state to the log, including what
+    /// hidden workspaces would look like (more than hyprdarwinctl shows).
     private func dumpState() {
         var lines = ["state dump:"]
         for monitor in model.monitors {

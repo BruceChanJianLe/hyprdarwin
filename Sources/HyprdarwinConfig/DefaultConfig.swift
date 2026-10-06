@@ -6,10 +6,16 @@ public enum DefaultConfig {
 --  hyprdarwin never writes this file again: edit it freely, comments survive.
 --  Saving reloads it automatically; on an error the previous config stays
 --  active and the menu bar shows what went wrong (menu > Show Errors...).
+--  Menu > Settings... shows the options, binds and rules in effect (read-only).
 --
 --  The API is a subset of Hyprland 0.56's Lua config (hl.*). Options macOS
 --  cannot honour (blur, animations, rounding...) are accepted and ignored.
 --  See the README for the full list of supported calls.
+--
+--  hyprdarwinctl is hyprctl for hyprdarwin:
+--    hyprdarwinctl clients                    -- windows (-j for JSON)
+--    hyprdarwinctl dispatch 'hl.dsp.focus({ workspace = 2 })'
+--    hyprdarwinctl reload / configerrors / binds / events
 -- ============================================================================
 
 -- HYPR is the Hypr key: Caps Lock, remapped to F18 by hyprdarwin while it runs.
