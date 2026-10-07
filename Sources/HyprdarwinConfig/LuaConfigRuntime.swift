@@ -296,7 +296,7 @@ public final class LuaConfigRuntime {
             callMessages.removeAll()
         }
         func load(_ text: String) -> Int32 {
-            text.withCString { hd_load_buffer(L, $0, strlen($0), "=hyprdarwinctl") }
+            text.withCString { hd_load_buffer(L, $0, strlen($0), "=dispatch") }
         }
         var outcome = CallOutcome()
         func finish(error: String? = nil) -> CallOutcome {

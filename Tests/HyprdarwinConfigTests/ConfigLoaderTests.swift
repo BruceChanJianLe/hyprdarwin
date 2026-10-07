@@ -528,7 +528,7 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
 
     @Test func mistakesAreReportedAndDispatchNothing() throws {
         let lua = try runtime()
-        #expect(lua.evaluate("hl.dsp.focus({ workspace = ").error?.contains("hyprdarwinctl:1:") == true)
+        #expect(lua.evaluate("hl.dsp.focus({ workspace = ").error?.hasPrefix("dispatch:1:") == true)
         #expect(lua.evaluate("hl.dsp.focus({ nonsense = 1 })").error != nil)
         #expect(lua.evaluate("42").error == "expected an hl.dsp.* dispatcher, got a number value")
         #expect(lua.evaluate("local x = 1").error?.hasPrefix("nothing was dispatched") == true)
