@@ -257,7 +257,7 @@ final class AppController {
     /// The settings window shows the active config, as amended at runtime
     /// (bind and rule handles toggled by Lua).
     private func updateSettings(force: Bool = false) {
-        guard force || settings.isVisible else { return }
+        guard force || settings.isOpen else { return }
         var status = SettingsState.Status.loaded
         if configFailed { status = runningDefaults ? .failed : .rejected }
         settings.update(SettingsState(

@@ -57,7 +57,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private let model = SettingsModel()
     private var window: NSWindow?
 
-    var isVisible: Bool { window?.isVisible ?? false }
+    var isOpen: Bool { window.map { $0.isVisible || $0.isMiniaturized } ?? false }
 
     func update(_ state: SettingsState) {
         guard model.state != state else { return }
