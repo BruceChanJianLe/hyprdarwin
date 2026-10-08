@@ -2,7 +2,7 @@ import AppKit
 import HyprdarwinConfig
 
 /// The menu bar item: status, current workspace, Reload, Open Config,
-/// Show Errors, Pause and Quit.
+/// Settings, Show Errors, Pause and Quit.
 final class MenuBarController: NSObject {
     enum Status: Equatable {
         case waitingForAccessibility
@@ -23,6 +23,7 @@ final class MenuBarController: NSObject {
     var onReload: (() -> Void)?
     var onOpenConfig: (() -> Void)?
     var onShowMessages: (() -> Void)?
+    var onShowSettings: (() -> Void)?
     var onTogglePause: (() -> Void)?
     var onOpenAccessibilitySettings: (() -> Void)?
     var onQuit: (() -> Void)?
@@ -89,6 +90,7 @@ final class MenuBarController: NSObject {
         let open = action("Open Config", #selector(openConfig), key: "o")
         open.toolTip = state.configPath
         menu.addItem(open)
+        menu.addItem(action("Settings…", #selector(showSettings), key: ","))
         let errors = state.messages.filter { $0.severity == .error }.count
         let warnings = state.messages.filter { $0.severity == .warning }.count
         var messagesTitle = "Show Errors…"
@@ -132,6 +134,7 @@ final class MenuBarController: NSObject {
     @objc private func reload() { onReload?() }
     @objc private func openConfig() { onOpenConfig?() }
     @objc private func showMessages() { onShowMessages?() }
+    @objc private func showSettings() { onShowSettings?() }
     @objc private func togglePause() { onTogglePause?() }
     @objc private func openAccessibility() { onOpenAccessibilitySettings?() }
     @objc private func quit() { onQuit?() }

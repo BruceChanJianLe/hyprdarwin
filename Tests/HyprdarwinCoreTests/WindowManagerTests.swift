@@ -462,9 +462,46 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
     }
 
     @Test func eventLinesUseHyprlandNames() {
-        #expect(WMEvent.workspace(.numbered(3)).line == "workspace>>3")
-        #expect(WMEvent.openWindow(255, workspace: .numbered(1), bundleID: "com.a", title: "T").line == "openwindow>>ff,1,com.a,T")
-        #expect(WMEvent.activeSpecial("scratch", monitorName: "DELL").line == "activespecial>>special:scratch,DELL")
+        let manager = makeManager()
+        #expect(manager.eventLines(.workspace(.numbered(3))) == ["workspace>>3", "workspacev2>>3,3"])
+        #expect(manager.eventLines(.openWindow(255, workspace: .numbered(1), bundleID: "com.a", title: "T")) == ["openwindow>>ff,1,com.a,T"])
+        #expect(manager.eventLines(.activeSpecial("scratch", monitorName: "DELL"))
+            == ["activespecial>>special:scratch,DELL", "activespecialv2>>-98,special:scratch,DELL"])
+        #expect(manager.eventLines(.activeSpecial(nil, monitorName: "DELL")) == ["activespecial>>,DELL", "activespecialv2>>,,DELL"])
+        #expect(manager.eventLines(.activeWindow(nil, bundleID: "", title: "")) == ["activewindow>>,", "activewindowv2>>"])
+        #expect(manager.eventLines(.activeWindow(16, bundleID: "com.a", title: "two\nlines")) == ["activewindow>>com.a,two lines", "activewindowv2>>10"])
+        #expect(manager.eventLines(.moveWindow(16, workspace: .special("special"))) == ["movewindow>>10,special:special", "movewindowv2>>10,-99,special:special"])
+        #expect(manager.eventLines(.windowTitle(16, title: "New")) == ["windowtitle>>10", "windowtitlev2>>10,New"])
+        #expect(manager.eventLines(.monitorRemoved(index: 1, name: "DELL")) == ["monitorremoved>>DELL", "monitorremovedv2>>1,DELL,DELL"])
+        #expect(manager.eventLines(.configReloaded) == ["configreloaded>>"])
+    }
+
+    @Test func specialWorkspacesGetStableNegativeIDs() {
+        let manager = makeManager()
+        #expect(manager.numericID(of: .numbered(4)) == 4)
+        #expect(manager.numericID(of: .special("special")) == -99)
+        #expect(manager.numericID(of: .special("scratch")) == -98)
+        #expect(manager.numericID(of: .special("music")) == -97)
+        #expect(manager.numericID(of: .special("scratch")) == -98)
+    }
+
+    @Test func monitorEventsCarryTheirIndexFromTheLeft() {
+        let manager = makeManager(monitors: [primary, external])
+        _ = manager.drainEvents()
+        manager.setMonitors([primary])
+        #expect(manager.drainEvents().contains(.monitorRemoved(index: 1, name: "DELL U3423WE")))
+        manager.setMonitors([primary, external])
+        #expect(manager.drainEvents().contains(.monitorAdded(index: 1, name: "DELL U3423WE")))
+        #expect(manager.monitorIndex(of: external.id) == 1)
+    }
+
+    @Test func focusHistoryIDCountsBackFromTheFocusedWindow() {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        #expect(manager.focusHistoryID(of: 2) == 0)
+        #expect(manager.focusHistoryID(of: 1) == 1)
+        #expect(manager.focusHistoryID(of: 9) == nil)
     }
 
     @Test func pointerHelpers() {
