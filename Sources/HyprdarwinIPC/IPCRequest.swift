@@ -46,8 +46,11 @@ public enum IPCReply {
 
     public static func error(_ message: String) -> String { "error: \(message)" }
 
-    /// True for a reply that reports a failure.
-    public static func isFailure(_ reply: String) -> Bool {
-        reply.hasPrefix("error: ") || reply == unknownRequest
+    /// True for a reply that reports a failure. Only actions reply
+    /// "error: <reason>"; query output is never a failure, though it may
+    /// start with "error: " (configerrors listing an error).
+    public static func isFailure(_ reply: String, to request: IPCRequest) -> Bool {
+        if reply == unknownRequest { return true }
+        return ["dispatch", "reload"].contains(request.command) && reply.hasPrefix("error: ")
     }
 }

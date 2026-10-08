@@ -129,7 +129,7 @@ do {
 } catch {
     fail("\(instance.signature): \(error)")
 }
-if IPCReply.isFailure(reply) {
+if IPCReply.isFailure(reply, to: request) {
     fail(reply == IPCReply.unknownRequest ? "unknown command \"\(command)\" (see hyprdarwinctl --help)" : String(reply.dropFirst("error: ".count)))
 }
 write(reply)

@@ -55,10 +55,20 @@ private func waitUntil(_ seconds: Double = 3, _ condition: () -> Bool) -> Bool {
     }
 
     @Test func failureReplies() {
-        #expect(IPCReply.isFailure(IPCReply.error("nope")))
-        #expect(IPCReply.isFailure(IPCReply.unknownRequest))
-        #expect(!IPCReply.isFailure(IPCReply.ok))
-        #expect(!IPCReply.isFailure("Window 1a -> error: something"))
+        let dispatch = IPCRequest(command: "dispatch", arguments: "x()")
+        let reload = IPCRequest(command: "reload")
+        #expect(IPCReply.isFailure(IPCReply.error("nope"), to: dispatch))
+        #expect(IPCReply.isFailure(IPCReply.error("config rejected"), to: reload))
+        #expect(IPCReply.isFailure(IPCReply.unknownRequest, to: IPCRequest(command: "frobnicate")))
+        #expect(!IPCReply.isFailure(IPCReply.ok, to: dispatch))
+        #expect(!IPCReply.isFailure("Window 1a -> error: something", to: IPCRequest(command: "clients")))
+    }
+
+    /// Query output is never a failure, even when it starts with "error: ":
+    /// configerrors lists an error-severity message that way.
+    @Test func configErrorsOutputIsNotAFailure() {
+        let output = "error: hyprdarwin.lua:8: unexpected symbol near <eof>"
+        #expect(!IPCReply.isFailure(output, to: IPCRequest(command: "configerrors")))
     }
 }
 
