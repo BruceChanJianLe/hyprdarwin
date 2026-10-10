@@ -159,6 +159,33 @@ public struct DwindleLayout: Equatable, Sendable {
         self.root = updated
     }
 
+    /// Move the border of `id` on the `direction` side `points` that way:
+    /// the split it is the first child of for right/down, the second for
+    /// left/up. At the area's edge the split on the other side moves instead.
+    public mutating func moveBorder(of id: WindowID, _ direction: Direction, by points: Double, area: CGRect, options: DwindleOptions) {
+        guard let root, let path = Self.path(to: id, in: root) else { return }
+        let axis: SplitAxis = direction.isHorizontal ? .horizontal : .vertical
+        let forward = direction.isIncreasing
+        let all = boxes(in: area, options: options)
+        // ancestors split along the axis, deepest first, with whether `id` is in the first child
+        let ancestors = stride(from: path.count - 1, through: 0, by: -1).compactMap { depth -> (entry: BoxEntry, inFirst: Bool)? in
+            let ancestor = Array(path.prefix(depth))
+            guard let entry = all.first(where: { $0.path == ancestor }), entry.axis == axis else { return nil }
+            return (entry, !path[depth])
+        }
+        guard let target = ancestors.first(where: { $0.inFirst == forward }) ?? ancestors.first else { return }
+        let size = axis == .horizontal ? target.entry.box.width : target.entry.box.height
+        guard size > 0 else { return }
+        let change = points / size * 2 * (forward ? 1 : -1)
+        self.root = Self.modifying(at: target.entry.path, in: root) { node in
+            guard case let .split(splitAxis, ratio, pinned, first, second) = node else { return node }
+            return .split(
+                axis: splitAxis, ratio: (ratio + change).clamped(to: Self.ratioRange),
+                pinned: pinned, first: first, second: second
+            )
+        }
+    }
+
     // MARK: - Geometry
 
     struct BoxEntry {

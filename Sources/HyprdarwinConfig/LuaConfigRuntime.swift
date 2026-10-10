@@ -187,6 +187,7 @@ public final class LuaConfigRuntime {
         hd_newtable(L)
         setBuiltin("cycle_layout", .dispatcher, "hd.cycle_layout")
         setBuiltin("retile", .dispatcher, "hd.retile")
+        setBuiltin("resize", .dispatcher, "hd.resize")
         namespaceIndexMetatable(prefix: "hd.")
         lua_setfield(L, -2, "dsp")
         lua_pushstring(L, BuildInfo.current.version)

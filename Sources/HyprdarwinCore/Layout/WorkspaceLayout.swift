@@ -215,6 +215,22 @@ public enum WorkspaceLayout: Equatable, Sendable {
         }
     }
 
+    /// Move the border of `id` on the `direction` side (the opposite one
+    /// when `id` touches the area's edge there) `points` that way.
+    public mutating func moveBorder(of id: WindowID, _ direction: Direction, by points: Double, area: CGRect, options: LayoutOptions) {
+        switch self {
+        case .dwindle(var layout):
+            layout.moveBorder(of: id, direction, by: points, area: area, options: options.dwindle)
+            self = .dwindle(layout)
+        case .master(var layout):
+            layout.moveBorder(of: id, direction, by: points, area: area)
+            self = .master(layout)
+        case .even(var layout):
+            layout.moveBorder(of: id, direction, by: points, area: area)
+            self = .even(layout)
+        }
+    }
+
     /// Raw tile boxes covering `area`, before gaps_in. `minimums` are the
     /// windows' minimum sizes, gaps included.
     public func frames(in area: CGRect, options: LayoutOptions, minimums: [WindowID: CGSize] = [:]) -> [WindowID: CGRect] {

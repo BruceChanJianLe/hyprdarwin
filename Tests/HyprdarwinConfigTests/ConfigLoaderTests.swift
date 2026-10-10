@@ -35,8 +35,14 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(ten.action == .dispatcher(.focusWorkspace(.id(.numbered(10)), onCurrentMonitor: false)))
         #expect(ten.combo.modifiers == [.hypr])
         let resizeBinds = config.binds.filter { $0.submap == "resize" }
-        #expect(resizeBinds.count == 6)
-        #expect(resizeBinds.first?.repeating == true)
+        #expect(resizeBinds.count == 10)
+        // the arrows and h/j/k/l move the window's border that way, repeating
+        for (keys, direction) in [("l", Direction.right), ("h", .left), ("j", .down), ("k", .up), ("right", .right), ("up", .up)] {
+            let combo = try KeyCombo.parse(keys).get()
+            let bind = try #require(resizeBinds.first { $0.combo == combo }, "\(keys)")
+            #expect(bind.action == .dispatcher(.resizeDirection(direction, amount: 40)))
+            #expect(bind.repeating)
+        }
         #expect(config.binds.allSatisfy { $0.submap == nil || $0.submap == "resize" })
         #expect(config.focusOnOpen == false)
         #expect(config.activeBorder == Config().activeBorder, "the Hyprland gradient")
@@ -233,6 +239,8 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         hl.bind("HYPR + 6", hl.dsp.workspace.move({ monitor = "+1" }))
         hl.bind("HYPR + 7", hl.dsp.window.move({ x = 10, y = -10, relative = true }))
         hl.bind("HYPR + 8", hl.dsp.focus({ workspace = "special:scratch" }))
+        hl.bind("HYPR + 9", hd.dsp.resize({ direction = "r", amount = 25 }))
+        hl.bind("HYPR + 0", hd.dsp.resize({ direction = "up" }))
         """).config)
         #expect(config.binds.map(\.action) == [
             .dispatcher(.focusWorkspace(.existing(1), onCurrentMonitor: false)),
@@ -243,7 +251,12 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
             .dispatcher(.moveWorkspaceToMonitor(nil, .relative(1))),
             .dispatcher(.moveBy(x: 10, y: -10, relative: true)),
             .dispatcher(.focusWorkspace(.id(.special("scratch")), onCurrentMonitor: false)),
+            .dispatcher(.resizeDirection(.right, amount: 25)),
+            .dispatcher(.resizeDirection(.up, amount: 40)),
         ])
+        #expect(load("hd.dsp.resize({ direction = \"sideways\" })").errors.first?.text.contains("invalid direction") == true)
+        #expect(load("hd.dsp.resize({ direction = \"left\", amount = -5 })").errors.first?.text.contains("amount must be") == true)
+        #expect(load("hd.dsp.resize({ amount = 40 })").errors.first?.text.contains("expected { direction") == true)
     }
 
     @Test func unsupportedDispatchersBecomeNoOps() throws {

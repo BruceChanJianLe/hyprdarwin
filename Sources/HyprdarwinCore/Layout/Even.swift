@@ -91,6 +91,45 @@ public struct EvenLayout: Equatable, Sendable {
         }
     }
 
+    /// Move the border of `id` (or of its row or column) on the `direction`
+    /// side `points` that way; the last one moves its border with the
+    /// previous one, the first its border with the next.
+    public mutating func moveBorder(of id: WindowID, _ direction: Direction, by points: Double, area: CGRect) {
+        guard let index = windows.firstIndex(of: id), windows.count > 1, points != 0 else { return }
+        let forward = direction.isIncreasing
+        // the border between shares `before` and `before + 1` moves forward or back
+        func move(_ shares: inout [Double], at position: Int, length: Double) {
+            guard shares.count > 1, length > 0 else { return }
+            let before = forward ? min(position, shares.count - 2) : max(position - 1, 0)
+            if forward {
+                Self.shift(&shares, from: before + 1, to: before, points: points, length: length)
+            } else {
+                Self.shift(&shares, from: before, to: before + 1, points: points, length: length)
+            }
+        }
+        switch arrangement {
+        case .horizontal, .vertical:
+            guard direction.isHorizontal == (arrangement == .horizontal) else { return }
+            var shares = windows.map { weights[$0] ?? 1 }
+            move(&shares, at: index, length: direction.isHorizontal ? area.width : area.height)
+            for (window, share) in zip(windows, shares) { weights[window] = share }
+        case .tiled:
+            let grid = Self.grid(count: windows.count)
+            let row = index / grid.columns
+            if !direction.isHorizontal {
+                var rows = currentRowWeights(grid)
+                move(&rows, at: row, length: area.height)
+                if grid.rows > 1 { rowWeights = rows }
+                return
+            }
+            // the incomplete last row spreads evenly; full rows share the columns
+            guard row < grid.rows - 1 || windows.count % grid.columns == 0 else { return }
+            var columns = currentColumnWeights(grid)
+            move(&columns, at: index % grid.columns, length: area.width)
+            if grid.columns > 1 { columnWeights = columns }
+        }
+    }
+
     /// Move `points` of `length` from share `from` to share `to`, keeping
     /// each share above a tenth of the average.
     static func shift(_ shares: inout [Double], from: Int, to: Int, points: Double, length: Double) {

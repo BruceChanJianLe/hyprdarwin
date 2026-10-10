@@ -189,6 +189,12 @@ enum DispatcherParser {
             }
         case "hd.retile":
             return ok(.retile)
+        case "hd.resize":
+            guard let text = table["direction"].text else { return fail("expected { direction = ..., amount = ... }") }
+            guard let direction = Direction(parsing: text) else { return fail("invalid direction \"\(text)\"") }
+            let amount = table["amount"] == .none ? 40 : table["amount"].double
+            guard let amount, amount > 0 else { return fail("amount must be a positive number of points") }
+            return ok(.resizeDirection(direction, amount: amount))
 
         case "workspace.toggle_special":
             return ok(.toggleSpecial(first.text ?? ""))
