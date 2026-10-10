@@ -37,6 +37,8 @@ final class AppController {
     private var paused = false
     private var capsRemapped = false
     private var known: [pid_t: Set<WindowID>] = [:]
+    /// Per app: the windows its last listing found on another Space.
+    private var awayKnown: [pid_t: Set<WindowID>] = [:]
     private var lastPlan = Plan()
     private var lastOSFocus: WindowID?
     private var focusTracker = FocusTracker()
@@ -403,9 +405,12 @@ final class AppController {
         guard managing else { return }
         switch event {
         case let .windows(pid, infos, away, initial):
-            let changes = model.applyListing(infos, away: away, previous: known[pid] ?? [], initial: initial)
-            let has = Set(infos.map(\.id)).union(away)
+            let previous = known[pid] ?? []
+            let changes = model.applyListing(infos, away: away, previous: previous, initial: initial)
+            let kept = away.filter { previous.contains($0) || model.windows[$0] != nil }
+            let has = Set(infos.map(\.id)).union(kept)
             known[pid] = has.isEmpty ? nil : has
+            awayKnown[pid] = away.isEmpty ? nil : away
             var returned = false
             for change in changes {
                 switch change {
@@ -503,7 +508,7 @@ final class AppController {
         guard managing else { return }
         // windows on another Space are not on screen, and their app is not listing them
         let listed = Dictionary(uniqueKeysWithValues: source.pids.map { pid in
-            (pid, (known[pid] ?? []).filter { model.windows[$0]?.isAway != true })
+            (pid, (known[pid] ?? []).subtracting(awayKnown[pid] ?? []))
         })
         for pid in listingProbe.appsToRelist(listed: listed, onScreen: WindowStack.onScreenWindows(), now: Date()) {
             source.refresh(pid: pid)
