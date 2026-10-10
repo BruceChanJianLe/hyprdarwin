@@ -320,7 +320,7 @@ hyprdarwinctl events                        # stream the event socket until Ctrl
 
 | Command | Reply |
 |---|---|
-| `clients` | every managed window: address (`0x` + window id), `at`, `size`, workspace, `floating`, `hidden` (parked on a hidden workspace), monitor, `class` (bundle id), title, initial class and title, app name, pid, `fullscreen` (0 none, 1 maximized, 2 fullscreen), `focusHistoryID` (0 is the focused window), tags, AX role and subrole, `minSize` |
+| `clients` | every managed window: address (`0x` + window id), `at`, `size`, workspace, `floating`, `hidden` (parked on a hidden workspace, or away on another macOS Space or in native fullscreen), monitor, `class` (bundle id), title, initial class and title, app name, pid, `fullscreen` (0 none, 1 maximized, 2 fullscreen), `focusHistoryID` (0 is the focused window), tags, AX role and subrole, `minSize` |
 | `activewindow` | the focused window (`{}` / `Invalid` when none) |
 | `workspaces`, `activeworkspace` | id, name, monitor, window count, fullscreen, last window, persistent, `tiledLayout`, visible; `activeworkspace` is the focused monitor's numbered workspace |
 | `monitors` | id (position from the left, as monitor selectors count), name, `displayID`, frame, `reserved` (menu bar and Dock: top, right, bottom, left), active and special workspace, focused |
