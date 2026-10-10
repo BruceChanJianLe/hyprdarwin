@@ -69,6 +69,17 @@ private func decode<T: Decodable>(_ type: T.Type, _ text: String) throws -> T {
         #expect(Set(raw[0].keys).isSuperset(of: ["address", "at", "size", "workspace", "floating", "class", "title", "pid", "focusHistoryID"]))
     }
 
+    /// A window on another macOS Space (or in native fullscreen) keeps its
+    /// workspace but is not shown on it.
+    @Test func awayClientIsHidden() throws {
+        let context = try makeContext()
+        context.model.applyListing([], away: [0x1a], previous: [0x1a], initial: false)
+        let clients = try decode([ClientObject].self, Query.clients.reply(json: true, context: context))
+        #expect(clients.first { $0.address == "0x1a" }?.hidden == true)
+        #expect(clients.first { $0.address == "0x1a" }?.workspace == WorkspaceRef(id: 1, name: "1"))
+        #expect(clients.first { $0.address == "0x2b" }?.hidden == false)
+    }
+
     @Test func clientsAsText() throws {
         let text = Query.clients.reply(json: false, context: try makeContext())
         #expect(text.hasPrefix("Window 1a -> One:\n\tmapped: 1\n\thidden: 0\n\tat: 10,20\n\tsize: 400,300\n\tworkspace: 1 (1)\n"))
