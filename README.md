@@ -290,6 +290,7 @@ Some apps (Brave, WhatsApp...) refuse to shrink below a size. hyprdarwin learns 
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.
 - Floating windows go on top when focused; HYPR + SHIFT + V brings each floating window to the front in turn. macOS gives no way to keep them above tiles that are clicked afterwards.
 - **Borders** are drawn in the gap around the focused window, only while it really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every window inactive), and around the other visible windows when `general.col.inactive_border` or a rule's `border_color` is set. They are click-through overlays that never take focus. A `.fullscreen` window gets none.
+- Visiting another macOS Space, or an app's native fullscreen, leaves the tiling alone: every window keeps its workspace and tile, and is back in place on return. A window in native fullscreen keeps its tile for when it leaves fullscreen; meanwhile the others share its room.
 - Native macOS tabs (Ghostty, Finder, Terminal) are one tile: switching tabs keeps the tile where it is.
 - Logs: `~/Library/Logs/hyprdarwin.log` (set `HYPRDARWIN_DEBUG=1` for more), or `log stream --predicate 'subsystem == "io.github.brucechanjianle.hyprdarwin"'`. `kill -USR1 $(pgrep -x hyprdarwin)` writes the full window and workspace state to the log, including where hidden workspaces' windows would go; `hyprdarwinctl clients` and `workspaces` show the live state.
 
@@ -319,7 +320,7 @@ hyprdarwinctl events                        # stream the event socket until Ctrl
 
 | Command | Reply |
 |---|---|
-| `clients` | every managed window: address (`0x` + window id), `at`, `size`, workspace, `floating`, `hidden` (parked on a hidden workspace), monitor, `class` (bundle id), title, initial class and title, app name, pid, `fullscreen` (0 none, 1 maximized, 2 fullscreen), `focusHistoryID` (0 is the focused window), tags, AX role and subrole, `minSize` |
+| `clients` | every managed window: address (`0x` + window id), `at`, `size`, workspace, `floating`, `hidden` (parked on a hidden workspace, or away on another macOS Space or in native fullscreen), monitor, `class` (bundle id), title, initial class and title, app name, pid, `fullscreen` (0 none, 1 maximized, 2 fullscreen), `focusHistoryID` (0 is the focused window), tags, AX role and subrole, `minSize` |
 | `activewindow` | the focused window (`{}` / `Invalid` when none) |
 | `workspaces`, `activeworkspace` | id, name, monitor, window count, fullscreen, last window, persistent, `tiledLayout`, visible; `activeworkspace` is the focused monitor's numbered workspace |
 | `monitors` | id (position from the left, as monitor selectors count), name, `displayID`, frame, `reserved` (menu bar and Dock: top, right, bottom, left), active and special workspace, focused |

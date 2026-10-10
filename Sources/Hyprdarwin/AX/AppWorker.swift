@@ -11,8 +11,9 @@ import ApplicationServices
 import HyprdarwinCore
 
 enum WorkerEvent {
-    /// Every manageable window the app has right now.
-    case windows(pid: pid_t, [WindowInfo], initial: Bool)
+    /// Every manageable window the app lists right now, and the ones it
+    /// has on another Space (another desktop, or native fullscreen).
+    case windows(pid: pid_t, [WindowInfo], away: Set<WindowID>, initial: Bool)
     case destroyed(pid: pid_t, WindowID)
     case frame(WindowID, CGRect)
     case title(WindowID, String)
@@ -43,6 +44,7 @@ final class AppWorker {
     private var attachAttempts = 0
     private var sentFirstSnapshot = false
     private var hidden = false
+    private var departures = DepartureTracker()
 
     static let admittedSubroles: Set<String> = [
         "", kAXStandardWindowSubrole as String, kAXDialogSubrole as String,
@@ -113,6 +115,14 @@ final class AppWorker {
     // MARK: - Requests from the main thread
 
     func refresh() { perform { [self] in snapshot() } }
+
+    /// Re-list after `delay` (worker thread).
+    private func snapshot(after delay: CFTimeInterval) {
+        let timer = CFRunLoopTimerCreateWithHandler(nil, CFAbsoluteTimeGetCurrent() + delay, 0, 0, 0) { [weak self] _ in
+            self?.snapshot()
+        }
+        CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, .defaultMode)
+    }
 
     func setHidden(_ isHidden: Bool) {
         perform { [self] in
@@ -224,7 +234,7 @@ final class AppWorker {
 
     private func snapshot() {
         if hidden {
-            send(.windows(pid: pid, [], initial: initial && !sentFirstSnapshot))
+            send(.windows(pid: pid, [], away: [], initial: initial && !sentFirstSnapshot))
             sentFirstSnapshot = true
             return
         }
@@ -241,6 +251,7 @@ final class AppWorker {
             return
         }
         var infos: [WindowInfo] = []
+        var away: Set<WindowID> = []
         var present: Set<WindowID> = []
         for element in list {
             guard let id = windowID(of: element) else { continue }
@@ -248,32 +259,79 @@ final class AppWorker {
             AXUIElementSetMessagingTimeout(element, 1.0)
             elements[id] = element
             subscribe(element, id)
-            if let info = readInfo(element, id: id) { infos.append(info) }
+            departures.forget(id)
+            // native fullscreen windows live in their own Space; leave them
+            // alone, in their place for when they come back
+            if boolAttribute(element, "AXFullScreen") == true {
+                away.insert(id)
+                continue
+            }
+            switch readInfo(element, id: id) {
+            case .window(let info):
+                infos.append(info)
+            case .unsure:
+                // mid-transition (into or out of fullscreen) or busy: keep its place
+                Log.debug("window \(id) of \(appName) is listed but unreadable for now: keeping its place")
+                away.insert(id)
+            case .unmanageable:
+                break
+            }
         }
+        // apps list only the current Space's windows. One no longer listed
+        // but still on a Space (or still on screen) is on another one or on
+        // its way there; keep its element so its destroyed notification
+        // still counts. One that stays on no Space is closed.
+        let now = Date()
         for id in elements.keys where !present.contains(id) {
-            elements[id] = nil
-            subscribed.remove(id)
+            switch departures.verdict(for: id, onASpace: SkyLight.isOnASpace(id) == true, onScreen: WindowStack.isOnScreen(id), now: now) {
+            case .away:
+                away.insert(id)
+            case .closing(let recheckAfter):
+                if recheckAfter == DepartureTracker.closeGrace {
+                    Log.info("window \(id) of \(appName) left its app's list and every Space: closed unless it is back within \(recheckAfter) s")
+                }
+                snapshot(after: recheckAfter + 0.05)
+                away.insert(id)
+            case .closed:
+                Log.debug("window \(id) of \(appName) stayed off every Space: closed")
+                elements[id] = nil
+                subscribed.remove(id)
+            }
         }
-        send(.windows(pid: pid, infos, initial: initial && !sentFirstSnapshot))
+        send(.windows(pid: pid, infos, away: away, initial: initial && !sentFirstSnapshot))
         sentFirstSnapshot = true
     }
 
-    private func readInfo(_ element: AXUIElement, id: WindowID) -> WindowInfo? {
-        guard stringAttribute(element, kAXRoleAttribute) == kAXWindowRole as String else { return nil }
-        let subrole = stringAttribute(element, kAXSubroleAttribute) ?? ""
-        guard Self.admittedSubroles.contains(subrole) else { return nil }
-        guard boolAttribute(element, kAXMinimizedAttribute) != true else { return nil }
-        // native fullscreen windows live in their own Space; leave them alone
-        guard boolAttribute(element, "AXFullScreen") != true else { return nil }
-        guard let frame = readFrame(element), frame.width > 30, frame.height > 30 else { return nil }
+    private enum Reading {
+        case window(WindowInfo)
+        /// Not a window to tile (another role or subrole, minimized, tiny).
+        case unmanageable
+        /// The app did not answer every read.
+        case unsure
+    }
+
+    private func readInfo(_ element: AXUIElement, id: WindowID) -> Reading {
+        guard let role = stringAttribute(element, kAXRoleAttribute) else { return .unsure }
+        guard role == kAXWindowRole as String else { return .unmanageable }
+        var value: CFTypeRef?
+        let subrole: String
+        switch AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &value) {
+        case .success: subrole = value as? String ?? ""
+        case .noValue, .attributeUnsupported: subrole = ""
+        default: return .unsure
+        }
+        guard Self.admittedSubroles.contains(subrole) else { return .unmanageable }
+        guard boolAttribute(element, kAXMinimizedAttribute) != true else { return .unmanageable }
+        guard let frame = readFrame(element) else { return .unsure }
+        guard frame.width > 30, frame.height > 30 else { return .unmanageable }
         var settable = DarwinBoolean(false)
         let resizable = AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success ? settable.boolValue : true
-        return WindowInfo(
+        return .window(WindowInfo(
             id: id, pid: pid, bundleID: bundleID, appName: appName,
             title: stringAttribute(element, kAXTitleAttribute) ?? "",
             role: kAXWindowRole as String, subrole: subrole, frame: frame, isResizable: resizable,
             minSize: minimumSize(element)
-        )
+        ))
     }
 
     /// The few apps that publish their minimum size do it as AXMinimumSize
@@ -311,6 +369,7 @@ final class AppWorker {
             guard let id = elements.first(where: { CFEqual($0.value, element) })?.key else { return }
             elements[id] = nil
             subscribed.remove(id)
+            departures.forget(id)
             send(.destroyed(pid: pid, id))
         case kAXMovedNotification, kAXResizedNotification:
             guard let id = elements.first(where: { CFEqual($0.value, element) })?.key,

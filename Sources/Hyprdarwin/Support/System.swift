@@ -66,6 +66,14 @@ enum WindowStack {
         return windows
     }
 
+    /// Whether the window server has the window ordered in (parked windows
+    /// count; a window its app closed by ordering it out does not).
+    static func isOnScreen(_ id: WindowID) -> Bool {
+        guard let list = CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]],
+              let entry = list.first(where: { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == id }) else { return false }
+        return (entry[kCGWindowIsOnscreen as String] as? Bool) ?? false
+    }
+
     /// The window number of the front-most window under `point`, or nil when
     /// something above the normal window layer (a menu, a panel, the Dock,
     /// Spotlight) covers it. Needs no screen-recording permission: only

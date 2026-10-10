@@ -130,7 +130,8 @@ extension ClientObject {
         let minimum = window.minimumSize
         address = Self.address(window.id)
         mapped = true
-        hidden = !model.isVisible(workspace)
+        // on a hidden workspace, or away on another macOS Space
+        hidden = window.isAway || !model.isVisible(workspace)
         at = [Int(frame.minX.rounded()), Int(frame.minY.rounded())]
         size = [Int(frame.width.rounded()), Int(frame.height.rounded())]
         self.workspace = WorkspaceRef(id: model.numericID(of: workspace), name: workspace.description)

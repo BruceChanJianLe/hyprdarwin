@@ -50,6 +50,9 @@ public final class WindowManager {
     var displacedActive: [String: WorkspaceID] = [:]
     /// Most recently focused last.
     var focusHistory: [WindowID] = []
+    /// The focused window when it went away to another Space; if it turns
+    /// out to be closed instead, focus falls back as for any closed window.
+    var focusedWhenAway: WindowID?
     /// Minimum sizes learned per app (bundle id), for the app's next windows.
     public internal(set) var appMinimumSizes: [String: CGSize] = [:]
     private var windowSequence = 0
@@ -458,6 +461,8 @@ public final class WindowManager {
     @discardableResult
     public func removeWindow(_ id: WindowID, refocus: Bool = true) -> [Effect] {
         guard let window = windows.removeValue(forKey: id) else { return [] }
+        let wasFocused = focusedWindow == id || (focusedWindow == nil && focusedWhenAway == id)
+        if focusedWhenAway == id { focusedWhenAway = nil }
         workspaces[window.workspace]?.layout.remove(id)
         focusHistory.removeAll { $0 == id }
         if workspaces[window.workspace]?.lastFocused == id {
@@ -465,7 +470,7 @@ public final class WindowManager {
         }
         emit(.closeWindow(id))
         var effects: [Effect] = []
-        if focusedWindow == id {
+        if wasFocused {
             focusedWindow = nil
             if refocus {
                 effects = focusFallback(preferring: window.workspace)
@@ -561,7 +566,9 @@ public final class WindowManager {
     /// stays put.
     @discardableResult
     public func externalFocus(_ id: WindowID, justOpened: Bool = false, previousOwner: KeyboardOwner? = nil) -> [Effect] {
-        guard let window = windows[id] else { return [] }
+        // the keyboard on a window in its native fullscreen Space: the
+        // workspaces stay as they are for the user's return
+        guard let window = windows[id], !window.isAway else { return [] }
         if justOpened, !config.focusOnOpen, !isVisible(window.workspace) {
             guard let previous = previousOwner, previous.window != id else { return [] }
             if let previousWindow = previous.window, let workspace = windows[previousWindow]?.workspace, isVisible(workspace) {
@@ -640,6 +647,7 @@ public final class WindowManager {
         guard let window = windows[id] else { return }
         let changed = focusedWindow != id
         focusedWindow = id
+        focusedWhenAway = nil
         workspaces[window.workspace]?.lastFocused = id
         focusHistory.removeAll { $0 == id }
         focusHistory.append(id)
@@ -671,9 +679,18 @@ public final class WindowManager {
         return effects
     }
 
+    /// The window of `workspace` focused most recently, skipping windows on
+    /// another macOS Space (focusing one would switch the Space).
     func mostRecent(on workspace: WorkspaceID) -> WindowID? {
-        focusHistory.last { windows[$0]?.workspace == workspace }
-            ?? windows.values.filter { $0.workspace == workspace }.map(\.id).min()
+        focusHistory.last { windows[$0].map { $0.workspace == workspace && !$0.isAway } == true }
+            ?? windows.values.filter { $0.workspace == workspace && !$0.isAway }.map(\.id).min()
+    }
+
+    /// The window to focus when `workspace` gets focus: its last focused
+    /// one, or the most recent one that is here.
+    func focusTarget(on workspace: WorkspaceID) -> WindowID? {
+        workspaces[workspace]?.lastFocused.flatMap { windows[$0].map { $0.workspace == workspace && !$0.isAway } == true ? $0 : nil }
+            ?? mostRecent(on: workspace)
     }
 
     /// Focus something sensible after the focused window went away.
@@ -685,8 +702,7 @@ public final class WindowManager {
             candidates.append(state.activeWorkspace)
         }
         for candidate in candidates {
-            if let id = workspaces[candidate]?.lastFocused.flatMap({ windows[$0]?.workspace == candidate ? $0 : nil })
-                ?? mostRecent(on: candidate) {
+            if let id = focusTarget(on: candidate) {
                 return focus(id, warp: warp)
             }
         }
@@ -743,6 +759,8 @@ public final class WindowManager {
     /// instead, one at a time, until the rest fit.
     func tiledFrames(for id: WorkspaceID) -> (frames: [WindowID: CGRect], overflow: [WindowID]) {
         guard var layout = workspaces[id]?.layout, let area = tilingArea(for: id) else { return ([:], []) }
+        // windows on another macOS Space keep their slot, but the rest share the room
+        for window in layout.windows where windows[window]?.isAway == true { layout.remove(window) }
         let gaps = gapsIn(for: id)
         var minimums: [WindowID: CGSize] = [:]
         for window in layout.windows {
@@ -804,8 +822,10 @@ public final class WindowManager {
         // a fullscreen window hides the rest of its workspace: macOS gives no
         // way to keep it above them (and translucent apps would show them)
         var covered: Set<WorkspaceID> = []
-        for window in windows.values where window.fullscreen != nil { covered.insert(window.workspace) }
-        for window in windows.values {
+        for window in windows.values where window.fullscreen != nil && !window.isAway { covered.insert(window.workspace) }
+        // windows on another macOS Space are not placed: the app is not
+        // listing them, and writing one could pull it onto this Space
+        for window in windows.values where !window.isAway {
             guard isVisible(window.workspace),
                   !(covered.contains(window.workspace) && window.fullscreen == nil),
                   let workspace = workspaces[window.workspace],

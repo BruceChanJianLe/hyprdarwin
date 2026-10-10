@@ -4,8 +4,12 @@ import Foundation
 public enum ListingChange: Equatable {
     /// A native tab switch: the new tab window took the old one's place.
     case replaced(old: WindowID, new: WindowID)
-    /// No longer listed: closed, minimized, hidden or on another Space.
+    /// No longer listed and on no Space: closed, minimized or hidden.
     case removed(WindowID, effects: [Effect])
+    /// Left for another macOS Space (or native fullscreen): kept in place.
+    case away(WindowID)
+    /// Listed again after being away, back in its place.
+    case returned(WindowID)
     /// Newly managed. `isNew` when it just opened, not when it was found at
     /// startup or adopted from an app that was unmanaged.
     case added(WindowID, isNew: Bool, effects: [Effect])
@@ -13,14 +17,18 @@ public enum ListingChange: Equatable {
 
 extension WindowManager {
     /// Apply an app's complete list of manageable windows. `previous` is what
-    /// it listed last time, managed or not. A window it no longer lists is
-    /// gone whether or not a destroyed notification came for it, so this is
-    /// also the safety net for apps that close windows without one.
+    /// it listed or had away last time, managed or not. `away` holds the
+    /// windows it has on another macOS Space (another desktop, or native
+    /// fullscreen): apps list only the current Space's windows, so those
+    /// keep their workspace and place until they are listed again. Any other
+    /// window it no longer lists is gone whether or not a destroyed
+    /// notification came for it, so this is also the safety net for apps
+    /// that close windows without one.
     @discardableResult
-    public func applyListing(_ infos: [WindowInfo], previous: Set<WindowID>, initial: Bool) -> [ListingChange] {
+    public func applyListing(_ infos: [WindowInfo], away: Set<WindowID> = [], previous: Set<WindowID>, initial: Bool) -> [ListingChange] {
         var changes: [ListingChange] = []
         let current = Set(infos.map(\.id))
-        var gone = previous.subtracting(current).filter { windows[$0] != nil }
+        var gone = previous.subtracting(current).subtracting(away).filter { windows[$0] != nil }
         for info in infos where !previous.contains(info.id) && windows[info.id] == nil {
             // switching native tabs swaps one tab window for another at the
             // same frame: keep its place instead of closing and reopening
@@ -32,8 +40,16 @@ extension WindowManager {
         for id in gone.sorted() {
             changes.append(.removed(id, effects: removeWindow(id)))
         }
+        for id in away.subtracting(current).sorted() where windows[id]?.isAway == false {
+            setAway(id, true)
+            changes.append(.away(id))
+        }
         for info in infos {
-            if windows[info.id] != nil {
+            if let window = windows[info.id] {
+                if window.isAway {
+                    setAway(info.id, false)
+                    changes.append(.returned(info.id))
+                }
                 updateInfo(info)
             } else {
                 // a window seen before (its app was unmanaged) is adopted, not opened
@@ -43,6 +59,64 @@ extension WindowManager {
             }
         }
         return changes
+    }
+
+    /// Away, the window keeps its workspace and layout slot. The keyboard is
+    /// no longer on it (macOS moved to another Space), and nothing else is
+    /// focused in its place: that would switch the Space back. Should it
+    /// turn out to be closed, focus falls back then (`removeWindow`).
+    func setAway(_ id: WindowID, _ away: Bool) {
+        guard windows[id] != nil else { return }
+        windows[id]?.isAway = away
+        if away, focusedWindow == id {
+            focusedWindow = nil
+            focusedWhenAway = id
+            emit(.activeWindow(nil, bundleID: "", title: ""))
+        } else if !away, focusedWhenAway == id {
+            // the keyboard says where focus is now (the app asks on return)
+            focusedWhenAway = nil
+        }
+    }
+}
+
+/// Tells, for each window an app stopped listing, whether it is away on
+/// another macOS Space or closed. Apps list only the current Space's
+/// windows, so one still on a Space (or still ordered in) is away. One its
+/// app closed by ordering it out is on no Space, but so is a window for a
+/// moment while it moves into or out of native fullscreen: it counts as
+/// closed only once it has stayed off every Space for `closeGrace`.
+public struct DepartureTracker {
+    public static let closeGrace: TimeInterval = 1
+
+    public enum Verdict: Equatable {
+        case away
+        /// Off every Space: away for now, closed if still so `after` from now.
+        case closing(recheckAfter: TimeInterval)
+        case closed
+    }
+
+    private var offSpaceSince: [WindowID: Date] = [:]
+
+    public init() {}
+
+    public mutating func verdict(for id: WindowID, onASpace: Bool, onScreen: Bool, now: Date) -> Verdict {
+        if onASpace || onScreen {
+            offSpaceSince[id] = nil
+            return .away
+        }
+        guard let since = offSpaceSince[id] else {
+            offSpaceSince[id] = now
+            return .closing(recheckAfter: Self.closeGrace)
+        }
+        let waited = now.timeIntervalSince(since)
+        guard waited >= Self.closeGrace else { return .closing(recheckAfter: Self.closeGrace - waited) }
+        offSpaceSince[id] = nil
+        return .closed
+    }
+
+    /// Listed again, or destroyed: nothing pending for it.
+    public mutating func forget(_ id: WindowID) {
+        offSpaceSince[id] = nil
     }
 }
 
