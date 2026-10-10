@@ -120,6 +120,26 @@ If none exists, hyprdarwin writes a commented default to `$HYPRDARWIN_CONFIG` if
 - **Errors keep the last good config.** A syntax error, a runtime error or an invalid value rejects the whole file: the previous config stays active, a red banner appears at the top of the screen and Menu > Show Errors (the settings window's Errors tab, also `hyprdarwinctl configerrors`) lists `file:line: message`. Warnings (an unknown option, a typo'd dispatcher) are applied and shown in an amber banner that fades. Notes (Hyprland options macOS cannot honour) only appear in Show Errors.
 - **Sandbox.** Every load runs in a fresh Lua 5.4 state without `io`, `os.execute`, `require` of C modules or `load` of bytecode, with an instruction budget so an endless loop cannot hang the window manager. `require("name")` loads `name.lua` or `name/init.lua` from the config directory.
 
+### Upgrading to 0.3.1
+
+hyprdarwin never rewrites an existing config, so a config generated before 0.3.1 keeps its old resize submap: `hl.dsp.window.resize` grows or shrinks the window, which feels reversed on a window right of or below its split, and h/j/k/l are unbound. Replace the `hl.bind(mod .. " + SHIFT + R", ...)` line and the `hl.define_submap("resize", ...)` block with:
+
+```lua
+if hd then
+    hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"), { description = "Resize mode" })
+    hl.define_submap("resize", function()
+        for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right",
+                                left = "left", down = "down", up = "up", right = "right" }) do
+            hl.bind(key, hd.dsp.resize({ direction = dir, amount = 40 }), { repeating = true })
+        end
+        hl.bind("escape", hl.dsp.submap("reset"))
+        hl.bind("return", hl.dsp.submap("reset"))
+    end)
+end
+```
+
+Each key now moves the focused window's border on that side the way it points, whichever side of the split the window is on. `hl.dsp.window.resize` itself is unchanged.
+
 ### Sample config
 
 ```lua
