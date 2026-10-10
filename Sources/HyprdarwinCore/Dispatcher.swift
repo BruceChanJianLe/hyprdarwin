@@ -33,6 +33,10 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
     case moveBy(x: Double, y: Double, relative: Bool)
     case swapDirection(Direction)
     case resize(x: Double, y: Double, relative: Bool)
+    /// hd.dsp.resize: move the focused tile's border on the `direction`
+    /// side (the far side at the screen edge) that way by `amount`, like
+    /// tmux's resize-pane. Floating windows grow right/down, shrink left/up.
+    case resizeDirection(Direction, amount: Double)
     case center
     case focusDirection(Direction)
     case focusWorkspace(WorkspaceSelector, onCurrentMonitor: Bool)
@@ -67,6 +71,7 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
         case let .moveBy(x, y, relative): return "window.move(x=\(x), y=\(y), relative=\(relative))"
         case .swapDirection(let direction): return "window.swap(direction=\(direction.rawValue))"
         case let .resize(x, y, relative): return "window.resize(x=\(x), y=\(y), relative=\(relative))"
+        case let .resizeDirection(direction, amount): return "hd.resize(direction=\(direction.rawValue), amount=\(amount))"
         case .center: return "window.center"
         case .focusDirection(let direction): return "focus(direction=\(direction.rawValue))"
         case let .focusWorkspace(selector, onCurrent): return "focus(workspace=\(selector)\(onCurrent ? ", on_current_monitor" : ""))"

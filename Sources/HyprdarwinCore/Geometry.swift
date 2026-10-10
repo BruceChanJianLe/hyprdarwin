@@ -20,6 +20,8 @@ public enum Direction: String, Sendable, CaseIterable {
     }
 
     public var isHorizontal: Bool { self == .left || self == .right }
+    /// Right or down: towards larger coordinates.
+    public var isIncreasing: Bool { self == .right || self == .down }
 }
 
 /// Per-side spacing, CSS order like Hyprland's gaps ("top right bottom left").

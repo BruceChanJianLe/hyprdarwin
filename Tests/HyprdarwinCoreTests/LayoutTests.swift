@@ -100,6 +100,67 @@ private let area = CGRect(x: 0, y: 0, width: 1000, height: 500)
         #expect(layout.frames(in: area, options: options)[1]?.width == 950)
     }
 
+
+    @Test func moveBorderFollowsTheArrow() {
+        let options = DwindleOptions()
+        func pair() -> DwindleLayout {
+            var layout = DwindleLayout()
+            layout.insert(1, nextTo: nil, area: area, options: options)
+            layout.insert(2, nextTo: 1, area: area, options: options)
+            return layout
+        }
+        // the right window: right moves its left border right, so it shrinks
+        var layout = pair()
+        layout.moveBorder(of: 2, .right, by: 100, area: area, options: options)
+        #expect(layout.frames(in: area, options: options)[2]?.minX == 600)
+        layout.moveBorder(of: 2, .left, by: 200, area: area, options: options)
+        #expect(layout.frames(in: area, options: options)[2]?.minX.rounded() == 400)
+        // the left window: right grows it, left shrinks it
+        layout = pair()
+        layout.moveBorder(of: 1, .right, by: 100, area: area, options: options)
+        #expect(layout.frames(in: area, options: options)[1]?.width == 600)
+        layout.moveBorder(of: 1, .left, by: 200, area: area, options: options)
+        #expect(layout.frames(in: area, options: options)[1]?.width.rounded() == 400)
+        // no border across the arrow: nothing moves
+        layout.moveBorder(of: 1, .up, by: 100, area: area, options: options)
+        #expect(layout.frames(in: area, options: options)[1]?.height == 500)
+
+        // stacked: down moves the border down whichever window has focus
+        let tall = CGRect(x: 0, y: 0, width: 500, height: 1000)
+        var stacked = DwindleLayout()
+        stacked.insert(1, nextTo: nil, area: tall, options: options)
+        stacked.insert(2, nextTo: 1, area: tall, options: options)
+        stacked.moveBorder(of: 2, .down, by: 100, area: tall, options: options)
+        #expect(stacked.frames(in: tall, options: options)[2]?.minY == 600)
+        stacked.moveBorder(of: 1, .up, by: 200, area: tall, options: options)
+        #expect(stacked.frames(in: tall, options: options)[2]?.minY.rounded() == 400)
+    }
+
+    @Test func moveBorderPicksTheBorderOnThatSide() {
+        // 1 | 2 | 3: 2's left border is the root split, its right border the nested one
+        var layout = DwindleLayout()
+        let options = DwindleOptions()
+        layout.insert(1, nextTo: nil, area: area, options: options)
+        layout.insert(2, nextTo: 1, area: area, options: options)
+        layout.insert(3, nextTo: 2, area: area, options: options)
+        layout.moveBorder(of: 2, .left, by: 100, area: area, options: options)
+        #expect(layout.frames(in: area, options: options)[1]?.maxX == 400)
+        layout = DwindleLayout()
+        layout.insert(1, nextTo: nil, area: area, options: options)
+        layout.insert(2, nextTo: 1, area: area, options: options)
+        layout.insert(3, nextTo: 2, area: area, options: options)
+        layout.moveBorder(of: 2, .right, by: 50, area: area, options: options)
+        var frames = layout.frames(in: area, options: options)
+        #expect(frames[1]?.width == 500, "the root split stays")
+        #expect(frames[3]?.minX == 800)
+        // at the right edge, 3's left border moves right
+        layout.moveBorder(of: 3, .right, by: 50, area: area, options: options)
+        frames = layout.frames(in: area, options: options)
+        #expect(frames[3]?.minX == 850)
+        // at the left edge, 1's right border moves left
+        layout.moveBorder(of: 1, .left, by: 100, area: area, options: options)
+        #expect(layout.frames(in: area, options: options)[1]?.width == 400)
+    }
     @Test func swapAndSwapSplit() {
         var layout = DwindleLayout()
         let options = DwindleOptions()
@@ -200,6 +261,28 @@ private let area = CGRect(x: 0, y: 0, width: 1000, height: 500)
         #expect(layout.mfact == 0.95)
     }
 
+
+    @Test func moveBorderMovesTheBoundaryTheArrowWay() {
+        var layout = MasterLayout(options: MasterOptions())
+        for id: WindowID in 1...2 { layout.insert(id, focused: nil, options: MasterOptions()) }
+        // master on the left: right moves the boundary right from either side
+        layout.moveBorder(of: 2, .right, by: 100, area: area)
+        #expect(abs(layout.mfact - 0.65) < 1e-9)
+        layout.moveBorder(of: 1, .right, by: 100, area: area)
+        #expect(abs(layout.mfact - 0.75) < 1e-9)
+        layout.moveBorder(of: 2, .left, by: 200, area: area)
+        #expect(abs(layout.mfact - 0.55) < 1e-9)
+        layout.moveBorder(of: 2, .up, by: 100, area: area)
+        #expect(abs(layout.mfact - 0.55) < 1e-9, "no border across the arrow")
+        // master on the right: right shrinks it
+        layout.orientation = .right
+        layout.moveBorder(of: 1, .right, by: 100, area: area)
+        #expect(abs(layout.mfact - 0.45) < 1e-9)
+        // master at the bottom: down shrinks it
+        layout.orientation = .bottom
+        layout.moveBorder(of: 2, .down, by: 50, area: area)
+        #expect(abs(layout.mfact - 0.35) < 1e-9)
+    }
     @Test func cycleAndRoll() {
         var layout = MasterLayout(options: MasterOptions())
         for id: WindowID in 1...3 { layout.insert(id, focused: nil, options: MasterOptions()) }
@@ -339,6 +422,31 @@ private let area = CGRect(x: 0, y: 0, width: 1000, height: 500)
         #expect(grid.frames(in: area)[2]?.width == 600, "and whole columns")
     }
 
+
+    @Test func moveBorderFollowsTheArrow() {
+        var even = layout(.horizontal, 3)
+        even.moveBorder(of: 2, .left, by: 100, area: area)
+        var widths = even.frames(in: area).mapValues { $0.width.rounded() }
+        #expect(widths == [1: 233, 2: 433, 3: 333], "2's left border moves left")
+        even = layout(.horizontal, 3)
+        even.moveBorder(of: 3, .right, by: 100, area: area)
+        widths = even.frames(in: area).mapValues { $0.width.rounded() }
+        #expect(widths == [1: 333, 2: 433, 3: 233], "at the right edge, 3's left border moves right")
+        even = layout(.horizontal, 3)
+        even.moveBorder(of: 1, .left, by: 100, area: area)
+        widths = even.frames(in: area).mapValues { $0.width.rounded() }
+        #expect(widths == [1: 233, 2: 433, 3: 333], "at the left edge, 1's right border moves left")
+        even.moveBorder(of: 1, .up, by: 100, area: area)
+        #expect(even.frames(in: area).mapValues { $0.width.rounded() } == widths, "no border across the arrow")
+
+        var grid = layout(.tiled, 4)
+        grid.moveBorder(of: 4, .down, by: 100, area: area)
+        #expect(grid.frames(in: area)[4]?.height == 150, "the bottom row's top border moves down")
+        grid.moveBorder(of: 2, .right, by: 100, area: area)
+        #expect(grid.frames(in: area)[2]?.width == 400, "the right column's left border moves right")
+        grid.moveBorder(of: 1, .right, by: 200, area: area)
+        #expect(grid.frames(in: area)[1]?.width == 800)
+    }
     @Test func minimumsMoveTheBoundaries() {
         let frames = layout(.horizontal, 3).frames(in: CGRect(x: 0, y: 0, width: 900, height: 500), minimums: [2: CGSize(width: 500, height: 0)])
         #expect(frames.mapValues(\.width) == [1: 200, 2: 500, 3: 200])

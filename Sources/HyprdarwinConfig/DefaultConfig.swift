@@ -149,17 +149,21 @@ hl.bind(mod .. " + bracketleft",  hl.dsp.focus({ workspace = "r-1" }), { descrip
 hl.bind(mod .. " + S",         hl.dsp.workspace.toggle_special("scratch"),             { description = "Toggle scratchpad" })
 hl.bind(mod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:scratch" }), { description = "Move to scratchpad" })
 
--- Resize mode: HYPR + SHIFT + R, then arrows; Escape or Return leaves. The
--- menu bar shows RESIZE while it is active.
-hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"), { description = "Resize mode" })
-hl.define_submap("resize", function()
-    hl.bind("right",  hl.dsp.window.resize({ x =  40, y =   0, relative = true }), { repeating = true })
-    hl.bind("left",   hl.dsp.window.resize({ x = -40, y =   0, relative = true }), { repeating = true })
-    hl.bind("down",   hl.dsp.window.resize({ x =   0, y =  40, relative = true }), { repeating = true })
-    hl.bind("up",     hl.dsp.window.resize({ x =   0, y = -40, relative = true }), { repeating = true })
-    hl.bind("escape", hl.dsp.submap("reset"))
-    hl.bind("return", hl.dsp.submap("reset"))
-end)
+-- Resize mode: HYPR + SHIFT + R, then the arrows or h/j/k/l; Escape or Return
+-- leaves. The menu bar shows RESIZE while it is active. hyprdarwin-only: like
+-- tmux's resize-pane, a key moves the window's border on that side the way it
+-- points (at the screen's edge, the border on the other side). Floating
+-- windows grow with right/down and shrink with left/up.
+if hd then
+    hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"), { description = "Resize mode" })
+    hl.define_submap("resize", function()
+        for key, dir in pairs(directions) do
+            hl.bind(key, hd.dsp.resize({ direction = dir, amount = 40 }), { repeating = true })
+        end
+        hl.bind("escape", hl.dsp.submap("reset"))
+        hl.bind("return", hl.dsp.submap("reset"))
+    end)
+end
 
 --------------------
 ---- WINDOW RULES ---

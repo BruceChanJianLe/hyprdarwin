@@ -160,12 +160,16 @@ for i = 1, 10 do
 end
 hl.bind(mod .. " + ALT + 1", hl.dsp.focus({ workspace = 11 }))   -- workspaces have no upper limit
 
-hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"))
-hl.define_submap("resize", function()
-    hl.bind("right",  hl.dsp.window.resize({ x = 40, y = 0, relative = true }), { repeating = true })
-    hl.bind("left",   hl.dsp.window.resize({ x = -40, y = 0, relative = true }), { repeating = true })
-    hl.bind("escape", hl.dsp.submap("reset"))
-end)
+if hd then
+    hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"))
+    hl.define_submap("resize", function()
+        -- each key moves the window's border on that side, like tmux's resize-pane
+        for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right", left = "left", right = "right" }) do
+            hl.bind(key, hd.dsp.resize({ direction = dir, amount = 40 }), { repeating = true })
+        end
+        hl.bind("escape", hl.dsp.submap("reset"))
+    end)
+end
 
 hl.window_rule({ match = { class = "^com\\.apple\\.systempreferences$" }, float = true, center = true })
 hl.window_rule({ match = { class = "^com\\.tinyspeck\\.slackmacgap$" }, workspace = "3 silent" })
@@ -176,7 +180,7 @@ hl.on("hyprland.start", function()
 end)
 ```
 
-The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE goes to the next layout (dwindle, then tmux's seven); HYPR + V floats a window and HYPR + SHIFT + V cycles through the floating ones; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + N / P go to the next / previous workspace that has windows and HYPR + ] / [ to the next / previous one on this display, empty ones included; HYPR + R re-tiles, HYPR + SHIFT + R enters a resize submap, HYPR + CTRL + R reloads the config, HYPR + S toggles the scratchpad, HYPR + F maximizes. There is no HYPR + TAB bind: Caps Lock sits right next to Tab.
+The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE goes to the next layout (dwindle, then tmux's seven); HYPR + V floats a window and HYPR + SHIFT + V cycles through the floating ones; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + N / P go to the next / previous workspace that has windows and HYPR + ] / [ to the next / previous one on this display, empty ones included; HYPR + R re-tiles, HYPR + SHIFT + R enters a resize submap (the arrows or h/j/k/l move the focused window's border that way, Escape or Return leaves), HYPR + CTRL + R reloads the config, HYPR + S toggles the scratchpad, HYPR + F maximizes. There is no HYPR + TAB bind: Caps Lock sits right next to Tab.
 
 ### API reference
 
@@ -232,7 +236,7 @@ Dispatchers (`hl.dsp.*`):
 | `window.move({ workspace, follow })` | `follow = false` is Hyprland's movetoworkspacesilent |
 | `window.move({ monitor, follow })`, `window.move({ x, y, relative })` | x/y moves floating windows |
 | `window.swap({ direction })` | |
-| `window.resize({ x, y, relative })` | tiled: moves the split; floating: resizes |
+| `window.resize({ x, y, relative })` | tiled: grows the window by x/y (negative shrinks), moving its nearest split; floating: resizes |
 | `window.center()` | floating windows |
 | `focus({ direction })`, `focus({ workspace, on_current_monitor })`, `focus({ monitor })`, `focus({ last = true })` | |
 | `workspace.toggle_special(name?)` | default name `special` |
@@ -242,6 +246,7 @@ Dispatchers (`hl.dsp.*`):
 | `window.cycle_next({ floating, tiled, prev })` | focus and raise the next window of the workspace (Hyprland's `cyclenext`); `floating = true` only visits floating windows, including those floating because they do not fit, `tiled = true` only tiles, `prev = true` goes backwards |
 | `hd.dsp.cycle_layout({ direction })` | hyprdarwin only: the focused workspace takes the next (`direction = "prev"`: previous) layout of `dwindle`, `even-horizontal`, `even-vertical`, `main-horizontal`, `main-horizontal-mirrored`, `main-vertical`, `main-vertical-mirrored`, `tiled`, wrapping around: dwindle, then tmux's next-layout order. Kept across reloads |
 | `hd.dsp.retile()` | hyprdarwin only: re-tile. Every window gets its window rules again as if it had just opened (float or tile, `workspace` (silently), floating `size`/`move`/`center`, `fullscreen`, tags, borders; a window no rule decides keeps its floating state), every workspace's layout is rebuilt from its windows in their current order with default split ratios and mfact, and every window is written to its place again |
+| `hd.dsp.resize({ direction, amount })` | hyprdarwin only: moves the focused tile's border on the `direction` side (`left`, `right`, `up`, `down`, or `l`/`r`/`u`/`d`) that way by `amount` points (default 40), like tmux's resize-pane, so the border follows the arrow whichever side of it the window is on. At the screen's edge, where there is no border on that side, the border on the other side moves instead. Floating windows grow with `right`/`down` and shrink with `left`/`up` |
 
 Workspace selectors: `3`, `"special"`, `"special:name"`, `"+1"`/`"-1"` (relative number), `"r+1"`/`"r-1"` (next/previous number on this monitor, empty ones included: numbers shown or kept on another monitor are skipped), `"e+1"`/`"e-1"` (next/previous existing), `"m+1"`/`"m-1"` (existing on this monitor), `"previous"`, `"empty"`. Monitor selectors: a name (or part of it), an index from the left, `"l"`/`"r"`/`"u"`/`"d"`, `"+1"`/`"-1"`, `"current"`.
 

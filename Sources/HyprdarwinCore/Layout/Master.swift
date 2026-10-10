@@ -138,6 +138,25 @@ public struct MasterLayout: Equatable, Sendable {
         adjustMfact(delta: master ? delta : -delta)
     }
 
+    /// Move the master/slave boundary `points` in `direction`, whichever
+    /// side of it `id` is on (it is the only border across the stacks).
+    public mutating func moveBorder(of id: WindowID, _ direction: Direction, by points: Double, area: CGRect) {
+        guard contains(id), windows.count > effectiveMasterCount else { return }
+        let forward = direction.isIncreasing
+        let delta: Double
+        switch orientation {
+        case .left, .right:
+            guard direction.isHorizontal else { return }
+            delta = points / max(1, area.width)
+        case .top, .bottom:
+            guard !direction.isHorizontal else { return }
+            delta = points / max(1, area.height)
+        }
+        // the master grows when the boundary moves away from its side
+        let masterFirst = orientation == .left || orientation == .top
+        adjustMfact(delta: forward == masterFirst ? delta : -delta)
+    }
+
     /// The window `step` places away in stack order, wrapping around.
     public func cycle(from id: WindowID?, step: Int) -> WindowID? {
         guard !windows.isEmpty else { return nil }

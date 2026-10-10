@@ -357,6 +357,27 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.computePlan().frame(of: 2)?.width == 300)
     }
 
+
+    @Test func directionalResizeMovesTheBorderTheArrowPoints() throws {
+        let manager = makeManager()
+        manager.addWindow(info(1), isNew: true)
+        manager.addWindow(info(2), isNew: true)
+        // the right window has focus: right moves the border between them right
+        manager.dispatch(.resizeDirection(.right, amount: 100))
+        #expect(manager.computePlan().frame(of: 2)?.minX == 600)
+        manager.dispatch(.resizeDirection(.left, amount: 200))
+        #expect(manager.computePlan().frame(of: 2)?.minX == 400)
+        manager.markFocused(1)
+        manager.dispatch(.resizeDirection(.right, amount: 100))
+        #expect(manager.computePlan().frame(of: 1)?.width == 500)
+
+        // floating windows grow right/down and shrink left/up
+        manager.dispatch(.float(.set))
+        let before = try #require(manager.computePlan().frame(of: 1))
+        manager.dispatch(.resizeDirection(.right, amount: 100))
+        manager.dispatch(.resizeDirection(.up, amount: 50))
+        #expect(manager.computePlan().frame(of: 1)?.size == CGSize(width: before.width + 100, height: before.height - 50))
+    }
     @Test func fullscreenModes() {
         let manager = makeManager { $0.gapsOut = Insets(all: 10) }
         manager.addWindow(info(1), isNew: true)

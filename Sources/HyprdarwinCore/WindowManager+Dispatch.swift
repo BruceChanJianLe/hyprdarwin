@@ -50,6 +50,8 @@ extension WindowManager {
             return swapInDirection(direction)
         case let .resize(x, y, relative):
             return resizeFocused(x: x, y: y, relative: relative)
+        case let .resizeDirection(direction, amount):
+            return resizeFocused(direction, amount: amount)
         case .center:
             guard let id = focusedWindow, let window = windows[id], window.isFloating,
                   let area = monitorArea(of: window) else { return [] }
@@ -507,6 +509,17 @@ extension WindowManager {
             dy = y - current.height
         }
         workspaces[window.workspace]?.layout.resize(id, dx: dx, dy: dy, area: area, options: config.layoutOptions)
+        return []
+    }
+
+    func resizeFocused(_ direction: Direction, amount: Double) -> [Effect] {
+        guard let id = focusedWindow, let window = windows[id] else { return [] }
+        if window.isFloating {
+            let step = direction.isIncreasing ? amount : -amount
+            return resizeFocused(x: direction.isHorizontal ? step : 0, y: direction.isHorizontal ? 0 : step, relative: true)
+        }
+        guard let area = tilingArea(for: window.workspace) else { return [] }
+        workspaces[window.workspace]?.layout.moveBorder(of: id, direction, by: amount, area: area, options: config.layoutOptions)
         return []
     }
 
