@@ -7,6 +7,20 @@ private let screen = Monitor(id: 1, name: "Built-in", frame: CGRect(x: 0, y: 0, 
                              visibleFrame: CGRect(x: 0, y: 25, width: 1000, height: 775))
 private let brave: Int32 = 300
 private let safari: Int32 = 400
+private let ghostty: Int32 = 500
+
+private func terminal(_ id: WindowID) -> WindowInfo {
+    window(id, pid: ghostty, bundle: "com.mitchellh.ghostty")
+}
+
+/// The captain's config: Brave opens on workspace 7.
+private func braveOnSeven(_ config: inout Config) {
+    var match = WindowRuleMatch()
+    match.class = try? RulePattern("com\\.brave\\.Browser")
+    var effects = WindowRuleEffects()
+    effects.workspace = WorkspaceTarget(parsing: "7 silent")
+    config.windowRules = [WindowRule(match: match, effects: effects)]
+}
 
 private func window(_ id: WindowID, pid: Int32 = brave, bundle: String = "com.brave.Browser",
                     frame: CGRect = CGRect(x: 100, y: 100, width: 400, height: 300)) -> WindowInfo {
@@ -255,6 +269,63 @@ private func twoBraveWindows() -> (WindowManager, listed: Set<WindowID>) {
         // it leaves fullscreen
         #expect(manager.applyListing([window(1), window(2), window(3)], previous: [1, 2, 3], initial: false) == [.returned(2)])
         #expect(manager.workspaces[.numbered(1)]?.layout == layout)
+        #expect(manager.computePlan() == plan)
+    }
+
+    /// The captain's first case: Brave, which a rule opens on workspace 7,
+    /// moved by hand to workspace 3 beside Ghostty. Ghostty goes native
+    /// fullscreen and back: Brave stays in its tile on 3, because rules run
+    /// only for windows that just opened, never for ones coming back.
+    @Test func braveMovedBesideGhosttyStaysThroughGhosttyFullscreen() {
+        let manager = makeManager(braveOnSeven)
+        _ = manager.dispatch(.focusWorkspace(.id(.numbered(3)), onCurrentMonitor: false))
+        manager.applyListing([terminal(50)], previous: [], initial: false)
+        manager.applyListing([window(1)], previous: [], initial: false)
+        #expect(manager.windows[1]?.workspace == .numbered(7), "the rule places a new Brave window")
+        manager.externalFocus(1)
+        _ = manager.dispatch(.moveToWorkspace(.id(.numbered(3)), follow: true))
+        #expect(manager.windows[1]?.workspace == .numbered(3) && manager.isVisible(.numbered(3)))
+        let layouts = manager.workspaces.mapValues(\.layout)
+        let plan = manager.computePlan()
+
+        // Ghostty's fullscreen Space: it is listed fullscreen, Brave not at all
+        #expect(manager.applyListing([], away: [50], previous: [50], initial: false) == [.away(50)])
+        #expect(manager.applyListing([], away: [1], previous: [1], initial: false) == [.away(1)])
+        // out of fullscreen
+        #expect(manager.applyListing([terminal(50)], previous: [50], initial: false) == [.returned(50)])
+        #expect(manager.applyListing([window(1)], previous: [1], initial: false) == [.returned(1)])
+
+        #expect(manager.windows[1]?.workspace == .numbered(3))
+        #expect(manager.workspaces.mapValues(\.layout) == layouts)
+        #expect(manager.computePlan() == plan)
+    }
+
+    /// The captain's second case: three Brave windows tiled on workspace 7
+    /// (Ghostty on 1). One goes native fullscreen and back: all three are in
+    /// the same tiles in the same order, and nothing else moves.
+    @Test func threeBraveWindowsKeepTheirTilesThroughOneFullscreen() {
+        let manager = makeManager(braveOnSeven)
+        manager.applyListing([terminal(50)], previous: [], initial: true)
+        manager.applyListing([window(1)], previous: [], initial: false)
+        manager.applyListing([window(1), window(2)], previous: [1], initial: false)
+        manager.applyListing([window(1), window(2), window(3)], previous: [1, 2], initial: false)
+        _ = manager.dispatch(.focusWorkspace(.id(.numbered(7)), onCurrentMonitor: false))
+        manager.externalFocus(2)
+        #expect(manager.workspaces[.numbered(7)]?.layout.windows.count == 3)
+        let assigned = manager.windows.mapValues(\.workspace)
+        let layouts = manager.workspaces.mapValues(\.layout)
+        let plan = manager.computePlan()
+
+        // window 2's fullscreen Space: Brave lists only 2, as fullscreen
+        manager.applyListing([], away: [1, 2, 3], previous: [1, 2, 3], initial: false)
+        manager.applyListing([], away: [50], previous: [50], initial: false)
+        // back out: Brave relists all three, Ghostty (parked on 1) again
+        let back = manager.applyListing([window(1), window(2), window(3)], previous: [1, 2, 3], initial: false)
+        manager.applyListing([terminal(50)], previous: [50], initial: false)
+        #expect(back == [.returned(1), .returned(2), .returned(3)], "nothing reopens, so no rule runs")
+
+        #expect(manager.windows.mapValues(\.workspace) == assigned)
+        #expect(manager.workspaces.mapValues(\.layout) == layouts)
         #expect(manager.computePlan() == plan)
     }
 
