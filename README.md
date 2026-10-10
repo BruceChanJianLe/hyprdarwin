@@ -184,7 +184,8 @@ if hd then
     hl.bind(mod .. " + SHIFT + R", hl.dsp.submap("resize"))
     hl.define_submap("resize", function()
         -- each key moves the window's border on that side, like tmux's resize-pane
-        for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right", left = "left", right = "right" }) do
+        for key, dir in pairs({ h = "left", j = "down", k = "up", l = "right",
+                                left = "left", down = "down", up = "up", right = "right" }) do
             hl.bind(key, hd.dsp.resize({ direction = dir, amount = 40 }), { repeating = true })
         end
         hl.bind("escape", hl.dsp.submap("reset"))
