@@ -329,6 +329,69 @@ private func twoBraveWindows() -> (WindowManager, listed: Set<WindowID>) {
         #expect(manager.computePlan() == plan)
     }
 
+    /// The captain's log (2026-10-10 03:29:34-36): Brave 20482, moved by hand
+    /// to workspace 3 beside Ghostty, goes native fullscreen. Brave first
+    /// does not list it while it is still on a Space, then, mid-transition,
+    /// neither lists it nor has it on any Space. That second listing used to
+    /// close it, so on return it reopened: the Brave rule sent it to 7 and
+    /// the tiles reflowed. Now it stays away until it is listed again.
+    @Test func fullscreeningWindowBrieflyOnNoSpaceKeepsItsPlace() {
+        let manager = makeManager(braveOnSeven)
+        _ = manager.dispatch(.focusWorkspace(.id(.numbered(3)), onCurrentMonitor: false))
+        manager.applyListing([terminal(18935)], previous: [], initial: false)
+        manager.applyListing([window(20482)], previous: [], initial: false)
+        manager.externalFocus(20482)
+        _ = manager.dispatch(.moveToWorkspace(.id(.numbered(3)), follow: true))
+        let layouts = manager.workspaces.mapValues(\.layout)
+        let plan = manager.computePlan()
+        var departures = DepartureTracker()
+
+        // 34.854: not listed, still on a Space
+        #expect(departures.verdict(for: 20482, onASpace: true, onScreen: true, now: at(0)) == .away)
+        #expect(manager.applyListing([], away: [20482], previous: [20482], initial: false) == [.away(20482)])
+        // 35.327: the fullscreen Space is shown, Ghostty's window is elsewhere
+        #expect(departures.verdict(for: 18935, onASpace: true, onScreen: false, now: at(0.47)) == .away)
+        #expect(manager.applyListing([], away: [18935], previous: [18935], initial: false) == [.away(18935)])
+        // 35.720: on its way, Brave's window is on no Space for a moment
+        #expect(departures.verdict(for: 20482, onASpace: false, onScreen: false, now: at(0.87)) == .closing(recheckAfter: 1))
+        #expect(manager.applyListing([], away: [20482], previous: [20482], initial: false).isEmpty, "not closed")
+        // 36.236: back on the desktop, both listed again
+        departures.forget(20482)
+        departures.forget(18935)
+        #expect(manager.applyListing([terminal(18935)], previous: [18935], initial: false) == [.returned(18935)])
+        #expect(manager.applyListing([window(20482)], previous: [20482], initial: false) == [.returned(20482)])
+
+        #expect(manager.windows[20482]?.workspace == .numbered(3), "no rule ran: it did not reopen")
+        #expect(manager.workspaces.mapValues(\.layout) == layouts)
+        #expect(manager.computePlan() == plan)
+    }
+
+    /// A window closed for real (ordered out, on no Space) leaves the tiling
+    /// at once, and is gone once it has stayed off every Space for the
+    /// grace; focus then falls back as for any closed window.
+    @Test func realCloseIsConfirmedAfterTheGrace() {
+        let (manager, listed) = twoBraveWindows()
+        var departures = DepartureTracker()
+        #expect(departures.verdict(for: 2, onASpace: false, onScreen: false, now: at(0)) == .closing(recheckAfter: 1))
+        manager.applyListing([window(1)], away: [2], previous: listed, initial: false)
+        #expect(manager.computePlan().frame(of: 1) == screen.visibleFrame, "the others take the room at once")
+        #expect(departures.verdict(for: 2, onASpace: false, onScreen: false, now: at(0.5)) == .closing(recheckAfter: 0.5))
+        #expect(departures.verdict(for: 2, onASpace: false, onScreen: false, now: at(1.05)) == .closed)
+        let changes = manager.applyListing([window(1)], previous: listed, initial: false)
+        #expect(changes == [.removed(2, effects: [.focus(1)])])
+        #expect(manager.windows[2] == nil && manager.focusedWindow == 1)
+    }
+
+    @Test func departureBackOnASpaceOrOnScreenRestartsTheGrace() {
+        var departures = DepartureTracker()
+        #expect(departures.verdict(for: 5, onASpace: false, onScreen: false, now: at(0)) == .closing(recheckAfter: 1))
+        #expect(departures.verdict(for: 5, onASpace: false, onScreen: true, now: at(0.5)) == .away)
+        #expect(departures.verdict(for: 5, onASpace: false, onScreen: false, now: at(1.2)) == .closing(recheckAfter: 1))
+        #expect(departures.verdict(for: 5, onASpace: true, onScreen: false, now: at(1.5)) == .away)
+        #expect(departures.verdict(for: 5, onASpace: false, onScreen: false, now: at(3)) == .closing(recheckAfter: 1))
+        #expect(departures.verdict(for: 5, onASpace: false, onScreen: false, now: at(4)) == .closed)
+    }
+
     /// A window closed for real is on no Space: it is not away, and goes at
     /// once, also while it was away and while other windows are away.
     @Test func realCloseStillDropsPromptly() {

@@ -63,14 +63,60 @@ extension WindowManager {
 
     /// Away, the window keeps its workspace and layout slot. The keyboard is
     /// no longer on it (macOS moved to another Space), and nothing else is
-    /// focused in its place: that would switch the Space back.
+    /// focused in its place: that would switch the Space back. Should it
+    /// turn out to be closed, focus falls back then (`removeWindow`).
     func setAway(_ id: WindowID, _ away: Bool) {
         guard windows[id] != nil else { return }
         windows[id]?.isAway = away
         if away, focusedWindow == id {
             focusedWindow = nil
+            focusedWhenAway = id
             emit(.activeWindow(nil, bundleID: "", title: ""))
+        } else if !away, focusedWhenAway == id {
+            // the keyboard says where focus is now (the app asks on return)
+            focusedWhenAway = nil
         }
+    }
+}
+
+/// Tells, for each window an app stopped listing, whether it is away on
+/// another macOS Space or closed. Apps list only the current Space's
+/// windows, so one still on a Space (or still ordered in) is away. One its
+/// app closed by ordering it out is on no Space, but so is a window for a
+/// moment while it moves into or out of native fullscreen: it counts as
+/// closed only once it has stayed off every Space for `closeGrace`.
+public struct DepartureTracker {
+    public static let closeGrace: TimeInterval = 1
+
+    public enum Verdict: Equatable {
+        case away
+        /// Off every Space: away for now, closed if still so `after` from now.
+        case closing(recheckAfter: TimeInterval)
+        case closed
+    }
+
+    private var offSpaceSince: [WindowID: Date] = [:]
+
+    public init() {}
+
+    public mutating func verdict(for id: WindowID, onASpace: Bool, onScreen: Bool, now: Date) -> Verdict {
+        if onASpace || onScreen {
+            offSpaceSince[id] = nil
+            return .away
+        }
+        guard let since = offSpaceSince[id] else {
+            offSpaceSince[id] = now
+            return .closing(recheckAfter: Self.closeGrace)
+        }
+        let waited = now.timeIntervalSince(since)
+        guard waited >= Self.closeGrace else { return .closing(recheckAfter: Self.closeGrace - waited) }
+        offSpaceSince[id] = nil
+        return .closed
+    }
+
+    /// Listed again, or destroyed: nothing pending for it.
+    public mutating func forget(_ id: WindowID) {
+        offSpaceSince[id] = nil
     }
 }
 

@@ -50,6 +50,9 @@ public final class WindowManager {
     var displacedActive: [String: WorkspaceID] = [:]
     /// Most recently focused last.
     var focusHistory: [WindowID] = []
+    /// The focused window when it went away to another Space; if it turns
+    /// out to be closed instead, focus falls back as for any closed window.
+    var focusedWhenAway: WindowID?
     /// Minimum sizes learned per app (bundle id), for the app's next windows.
     public internal(set) var appMinimumSizes: [String: CGSize] = [:]
     private var windowSequence = 0
@@ -421,6 +424,8 @@ public final class WindowManager {
     @discardableResult
     public func removeWindow(_ id: WindowID, refocus: Bool = true) -> [Effect] {
         guard let window = windows.removeValue(forKey: id) else { return [] }
+        let wasFocused = focusedWindow == id || (focusedWindow == nil && focusedWhenAway == id)
+        if focusedWhenAway == id { focusedWhenAway = nil }
         workspaces[window.workspace]?.layout.remove(id)
         focusHistory.removeAll { $0 == id }
         if workspaces[window.workspace]?.lastFocused == id {
@@ -428,7 +433,7 @@ public final class WindowManager {
         }
         emit(.closeWindow(id))
         var effects: [Effect] = []
-        if focusedWindow == id {
+        if wasFocused {
             focusedWindow = nil
             if refocus {
                 effects = focusFallback(preferring: window.workspace)
@@ -605,6 +610,7 @@ public final class WindowManager {
         guard let window = windows[id] else { return }
         let changed = focusedWindow != id
         focusedWindow = id
+        focusedWhenAway = nil
         workspaces[window.workspace]?.lastFocused = id
         focusHistory.removeAll { $0 == id }
         focusHistory.append(id)
