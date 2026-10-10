@@ -7,6 +7,8 @@ A personal, Hyprland-inspired tiling window manager for macOS.
 - Configured in Lua with a subset of Hyprland's own `hl.*` API, in a text file the app never writes.
 - Dwindle and master layouts plus tmux's seven (HYPR + SHIFT + SPACE loops through them like tmux's next-layout), tiling that respects each app's minimum window size, virtual Hyprland-style workspaces (numbered, created on demand, plus special scratchpads), window rules, submaps.
 - A built-in Hypr key: Caps Lock becomes a modifier while hyprdarwin runs (no Karabiner needed).
+- `hyprdarwinctl`, a hyprctl-style command line client, and an event socket that streams Hyprland's event names.
+- A read-only settings window showing the options, binds and rules in effect and the config's errors.
 - Uses only the Accessibility API and SIP-safe calls: System Integrity Protection stays on.
 
 Target: macOS 26 on Apple Silicon. This is a personal tool; it is not tested anywhere else.
@@ -21,7 +23,7 @@ brew install --cask brucechanjianle/hyprdarwin/hyprdarwin
 open /Applications/hyprdarwin.app
 ```
 
-Upgrade with `brew upgrade --cask hyprdarwin`. The cask comes from the [BruceChanJianLe/homebrew-hyprdarwin](https://github.com/BruceChanJianLe/homebrew-hyprdarwin) tap, which the release workflow updates (see [Releasing](#releasing)). Uninstalling quits the app; `brew uninstall --zap` also removes its log and preferences, never your config.
+The cask also links `hyprdarwinctl` into Homebrew's `bin`. Upgrade with `brew upgrade --cask hyprdarwin`. The cask comes from the [BruceChanJianLe/homebrew-hyprdarwin](https://github.com/BruceChanJianLe/homebrew-hyprdarwin) tap, which the release workflow updates (see [Releasing](#releasing)). Uninstalling quits the app; `brew uninstall --zap` also removes its log and preferences, never your config.
 
 ### nix-darwin
 
@@ -47,6 +49,8 @@ gh run download "$run" --repo BruceChanJianLe/hyprdarwin --name hyprdarwin-app -
 ditto -x -k /tmp/hyprdarwin/hyprdarwin.zip /Applications
 open /Applications/hyprdarwin.app
 ```
+
+`hyprdarwinctl` is inside the app: `/Applications/hyprdarwin.app/Contents/MacOS/hyprdarwinctl` (link it into your `PATH`, or install with Homebrew).
 
 ### Running
 
@@ -82,7 +86,7 @@ Only Apple's Command Line Tools are needed (`xcode-select --install`), no Xcode:
 ```sh
 swift build
 swift test      # see AGENTS.md if the Swift Testing macro plugin is not found
-scripts/build-app.sh   # -> build/hyprdarwin.app, signed with "hyprdarwin-local" if present, else ad-hoc
+scripts/build-app.sh   # -> build/hyprdarwin.app (with Contents/MacOS/hyprdarwinctl), signed with "hyprdarwin-local" if present, else ad-hoc
 ```
 
 ### Releasing
@@ -113,7 +117,7 @@ The config file is the first that exists of:
 If none exists, hyprdarwin writes a commented default to `$HYPRDARWIN_CONFIG` if set, else to the XDG path if `XDG_CONFIG_HOME` is set, else to `~/.config/hypr/hyprdarwin.lua`. It never writes the file again.
 
 - **Hot reload.** Saving any `.lua` file in the config's directory reloads (also through symlinks, so dotfile managers work). Menu > Reload Config does it by hand, and so does `hl.dsp.reload_config()`.
-- **Errors keep the last good config.** A syntax error, a runtime error or an invalid value rejects the whole file: the previous config stays active, a red banner appears at the top of the screen and Menu > Show Errors lists `file:line: message`. Warnings (an unknown option, a typo'd dispatcher) are applied and shown in an amber banner that fades. Notes (Hyprland options macOS cannot honour) only appear in Show Errors.
+- **Errors keep the last good config.** A syntax error, a runtime error or an invalid value rejects the whole file: the previous config stays active, a red banner appears at the top of the screen and Menu > Show Errors (the settings window's Errors tab, also `hyprdarwinctl configerrors`) lists `file:line: message`. Warnings (an unknown option, a typo'd dispatcher) are applied and shown in an amber banner that fades. Notes (Hyprland options macOS cannot honour) only appear in Show Errors.
 - **Sandbox.** Every load runs in a fresh Lua 5.4 state without `io`, `os.execute`, `require` of C modules or `load` of bytecode, with an instruction budget so an endless loop cannot hang the window manager. `require("name")` loads `name.lua` or `name/init.lua` from the config directory.
 
 ### Sample config
@@ -280,7 +284,7 @@ Some apps (Brave, WhatsApp...) refuse to shrink below a size. hyprdarwin learns 
 
 ## Using it
 
-- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has the version, Reload Config, Open Config, Show Errors, Pause/Resume, About and Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
+- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has the version, Reload Config, Open Config, Settings, Show Errors, Pause/Resume, About and Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
 - **Workspaces** are virtual: windows on hidden workspaces are parked in the bottom-right corner of the right-most display with a 1 pt sliver left on screen. Use one macOS Space per display, and leave that corner free.
 - Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace. While `misc.focus_on_open` is off, the switch waits 0.4 s, so an app that opens a new window silently does not pull you over.
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.
@@ -288,11 +292,67 @@ Some apps (Brave, WhatsApp...) refuse to shrink below a size. hyprdarwin learns 
 - **Borders** are drawn in the gap around the focused window, only while it really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every window inactive), and around the other visible windows when `general.col.inactive_border` or a rule's `border_color` is set. They are click-through overlays that never take focus. A `.fullscreen` window gets none.
 - Visiting another macOS Space, or an app's native fullscreen, leaves the tiling alone: every window keeps its workspace and tile, and is back in place on return. A window in native fullscreen keeps its tile for when it leaves fullscreen; meanwhile the others share its room.
 - Native macOS tabs (Ghostty, Finder, Terminal) are one tile: switching tabs keeps the tile where it is.
-- Logs: `~/Library/Logs/hyprdarwin.log` (set `HYPRDARWIN_DEBUG=1` for more), or `log stream --predicate 'subsystem == "io.github.brucechanjianle.hyprdarwin"'`. `kill -USR1 $(pgrep -x hyprdarwin)` writes the full window and workspace state to the log.
+- Logs: `~/Library/Logs/hyprdarwin.log` (set `HYPRDARWIN_DEBUG=1` for more), or `log stream --predicate 'subsystem == "io.github.brucechanjianle.hyprdarwin"'`. `kill -USR1 $(pgrep -x hyprdarwin)` writes the full window and workspace state to the log, including where hidden workspaces' windows would go; `hyprdarwinctl clients` and `workspaces` show the live state.
+
+## Settings window
+
+Menu > Settings… shows what is in effect, read-only: the config file is the only place settings change, and the window never writes it.
+
+- **General**: every option with its value in Lua syntax; options the config changed show the built-in default beside them. `hd.*` options and `hl.env` variables are listed too.
+- **Binds**: keys, action, description, submap and flags (`repeating`, `release`, `disabled` for binds turned off with `handle:set_enabled(false)`), with a filter.
+- **Window Rules** and **Workspace Rules**: each rule's match and effects as written, and whether it is enabled or dynamic.
+- **Errors**: the last load's errors, warnings and notes (Menu > Show Errors and a click on the banner open this tab).
+
+The header shows the config path and whether the last load succeeded; when it failed, the window shows the previous config, which stays active. Open Config and Reload are the only buttons.
+
+## hyprdarwinctl
+
+`hyprdarwinctl` is hyprctl for hyprdarwin: it queries and drives the running instance over a Unix socket.
+
+```sh
+hyprdarwinctl clients                       # every managed window
+hyprdarwinctl -j activewindow | jq .class   # JSON with -j (or --json, anywhere for queries)
+hyprdarwinctl dispatch 'hl.dsp.focus({ workspace = 3 })'
+hyprdarwinctl dispatch 'hl.dsp.window.move({ workspace = "special:scratch" })'
+hyprdarwinctl reload                        # fails (exit 1) with the error if the config is rejected
+hyprdarwinctl events                        # stream the event socket until Ctrl-C
+```
+
+| Command | Reply |
+|---|---|
+| `clients` | every managed window: address (`0x` + window id), `at`, `size`, workspace, `floating`, `hidden` (parked on a hidden workspace), monitor, `class` (bundle id), title, initial class and title, app name, pid, `fullscreen` (0 none, 1 maximized, 2 fullscreen), `focusHistoryID` (0 is the focused window), tags, AX role and subrole, `minSize` |
+| `activewindow` | the focused window (`{}` / `Invalid` when none) |
+| `workspaces`, `activeworkspace` | id, name, monitor, window count, fullscreen, last window, persistent, `tiledLayout`, visible; `activeworkspace` is the focused monitor's numbered workspace |
+| `monitors` | id (position from the left, as monitor selectors count), name, `displayID`, frame, `reserved` (menu bar and Dock: top, right, bottom, left), active and special workspace, focused |
+| `binds` | modifiers, key, keycode, submap, `repeat`, `release`, `enabled`, description, dispatcher |
+| `workspacerules` | every `hl.workspace_rule` |
+| `configerrors` | the last load's errors, warnings and notes, with their severity |
+| `version` | the running hyprdarwin's version |
+| `dispatch <lua>` | evaluates the Lua in the config's own state: an expression whose value is a dispatcher (`hl.dsp.*`, `hd.dsp.*`), a function (called, and what it returns dispatched; global functions the config defined work), or statements that call dispatchers. `ok`, or the error and exit status 1 |
+| `reload` | reloads the config; `ok`, or the reason it was rejected |
+| `instances` | running hyprdarwin instances (local, no request) |
+| `events` | prints the event socket's lines (local, no request) |
+
+Workspace ids are their numbers; special workspaces get negative ids like Hyprland's (-99 for `special`, -98, -97... for named ones in order of first use, stable while hyprdarwin runs). `dispatch` and `reload` answer only once they are done, so a query right after sees their effect. `dispatch` is refused while paused or before Accessibility is granted.
+
+### Sockets
+
+Each hyprdarwin run has a signature (`<start time>_<pid>`) and two sockets in `$TMPDIR/hyprdarwin/<signature>/` (`$TMPDIR` being macOS's per-user temporary directory, `getconf DARWIN_USER_TEMP_DIR`), readable by your user only:
+
+- `.socket.sock` takes one request per connection, Hyprland's `[flags]/command args` (`j/clients`, `/dispatch hl.dsp.exit()`), and closes after the reply. The request ends when the client closes its writing side or goes quiet for 0.1 s.
+- `.socket2.sock` sends `EVENT>>DATA` lines to every connected client: `openwindow>>ADDRESS,WORKSPACE,CLASS,TITLE`, `closewindow>>ADDRESS`, `activewindow>>CLASS,TITLE` and `activewindowv2>>ADDRESS`, `movewindow>>ADDRESS,WORKSPACE` and `movewindowv2>>ADDRESS,ID,WORKSPACE`, `workspace>>NAME` and `workspacev2>>ID,NAME`, `createworkspace`/`destroyworkspace` (+ `v2` with the id), `focusedmon>>MONITOR,WORKSPACE` and `focusedmonv2>>MONITOR,ID`, `activespecial>>NAME,MONITOR` and `activespecialv2>>ID,NAME,MONITOR`, `submap>>NAME`, `changefloatingmode>>ADDRESS,0|1`, `windowtitle>>ADDRESS` and `windowtitlev2>>ADDRESS,TITLE`, `monitoradded`/`monitorremoved>>NAME` (+ `v2>>ID,NAME,NAME`), `configreloaded>>`. Addresses here are hex window ids without `0x`, as in Hyprland.
+
+```sh
+nc -U "$(getconf DARWIN_USER_TEMP_DIR)hyprdarwin/$(ls -t "$(getconf DARWIN_USER_TEMP_DIR)hyprdarwin" | head -1)/.socket2.sock"
+```
+
+Every process hyprdarwin starts (`hl.exec_cmd`, bound commands) gets `HYPRDARWIN_INSTANCE_SIGNATURE`; `hyprdarwinctl` uses it when that instance is running, else the newest running one; `-i <signature or index>` picks one from `hyprdarwinctl instances`. Apps started through `open` come from launchd and do not inherit it.
+
+Each client is served on its own queue with short timeouts, so a client that connects and never sends, or stops reading, never stalls tiling: a silent request connection is closed after 2 s, and an event client that falls 1024 batches behind or blocks a write for 1 s is disconnected. A crashed instance's directory is removed when the next one starts.
 
 ## Not yet
 
-The IPC socket and `hyprdarwinctl` and a read-only settings window are the next milestone. Mouse binds, groups, scrolling/monocle layouts and animations are not planned for v1; blur, shadows, rounding and opacity of other apps' windows are not possible without disabling SIP.
+Mouse binds, groups, scrolling/monocle layouts and animations are not planned for v1; blur, shadows, rounding and opacity of other apps' windows are not possible without disabling SIP. The settings window is read-only; changing settings from it is not planned.
 
 ## License
 

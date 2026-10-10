@@ -497,3 +497,53 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(result.config != nil, "\(result.messages)")
     }
 }
+
+/// hyprdarwinctl dispatch: Lua evaluated in the active config's state.
+@Suite struct DispatchEvaluationTests {
+    private func runtime(_ source: String = "") throws -> LuaConfigRuntime {
+        try #require(load(source).runtime)
+    }
+
+    @Test func anExpressionNamingADispatcherRunsIt() throws {
+        let outcome = try runtime().evaluate("hl.dsp.focus({ workspace = 3 })")
+        #expect(outcome.error == nil)
+        #expect(outcome.actions == [.dispatch(.focusWorkspace(.id(.numbered(3)), onCurrentMonitor: false))])
+    }
+
+    @Test func statementsThatCallDispatchersRunThem() throws {
+        let outcome = try runtime().evaluate("hl.dsp.window.float()() hl.dsp.layout('togglesplit')()")
+        #expect(outcome.error == nil)
+        #expect(outcome.actions == [.dispatch(.float(.toggle)), .dispatch(.layoutMessage("togglesplit"))])
+    }
+
+    @Test func functionsAreCalledAndConfigGlobalsAreVisible() throws {
+        let lua = try runtime("""
+            function go_to(n) return hl.dsp.focus({ workspace = n }) end
+            """)
+        #expect(lua.evaluate("go_to(4)").actions == [.dispatch(.focusWorkspace(.id(.numbered(4)), onCurrentMonitor: false))])
+        #expect(lua.evaluate("function() return hl.dsp.exit() end").actions == [.dispatch(.exit)])
+        // the bare constructor is a function too: called without arguments
+        #expect(lua.evaluate("hl.dsp.window.close").actions == [.dispatch(.closeWindow)])
+    }
+
+    @Test func mistakesAreReportedAndDispatchNothing() throws {
+        let lua = try runtime()
+        #expect(lua.evaluate("hl.dsp.focus({ workspace = ").error?.hasPrefix("dispatch:1:") == true)
+        #expect(lua.evaluate("hl.dsp.focus({ nonsense = 1 })").error != nil)
+        #expect(lua.evaluate("42").error == "expected an hl.dsp.* dispatcher, got a number value")
+        #expect(lua.evaluate("local x = 1").error?.hasPrefix("nothing was dispatched") == true)
+        #expect(lua.evaluate("hl.bind('HYPR + Z', hl.dsp.exit())").error?.contains("only be called while the config loads") == true)
+        let partial = lua.evaluate("hl.dsp.exit()() error('boom')")
+        #expect(partial.error?.contains("boom") == true)
+        #expect(partial.actions.isEmpty)
+        #expect(lua.evaluate("while true do end").error?.contains("instruction budget exceeded") == true)
+        // the state still works afterwards
+        #expect(lua.evaluate("hl.dsp.exit()").actions == [.dispatch(.exit)])
+    }
+
+    @Test func printOutputComesBack() throws {
+        let outcome = try runtime().evaluate("print('hi') return hl.dsp.no_op()")
+        #expect(outcome.messages == [ConfigMessage(.info, "print: hi")])
+        #expect(outcome.actions == [.dispatch(.noOp)])
+    }
+}

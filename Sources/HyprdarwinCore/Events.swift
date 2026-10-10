@@ -34,8 +34,8 @@ public struct KeyboardOwner: Equatable, Sendable {
     }
 }
 
-/// State changes, named after Hyprland's event socket events so the event
-/// socket (next milestone) can stream them as `EVENT>>DATA` lines.
+/// State changes, named after Hyprland's event socket events; the event
+/// socket streams them as `EVENT>>DATA` lines (`lines(id:)`).
 public enum WMEvent: Equatable, Sendable {
     case openWindow(WindowID, workspace: WorkspaceID, bundleID: String, title: String)
     case closeWindow(WindowID)
@@ -50,44 +50,56 @@ public enum WMEvent: Equatable, Sendable {
     case windowTitle(WindowID, title: String)
     case submap(String)
     case configReloaded
-    case monitorAdded(String)
-    case monitorRemoved(String)
+    /// `index` is the monitor's position from the left, as in the queries.
+    case monitorAdded(index: Int, name: String)
+    case monitorRemoved(index: Int, name: String)
 
-    /// Hyprland's `EVENT>>DATA` form. Window addresses are printed as hex
-    /// window ids.
-    public var line: String {
+    /// Hyprland's `EVENT>>DATA` lines: the original event, then its `v2`
+    /// form where Hyprland has one. Window addresses are hex window ids
+    /// (no 0x, as in Hyprland's events); `id` numbers workspaces (special
+    /// ones are negative, see `WindowManager.numericID(of:)`). Monitors have
+    /// no separate description on macOS, so v2 repeats the name.
+    public func lines(id: (WorkspaceID) -> Int) -> [String] {
         func address(_ id: WindowID?) -> String { id.map { String($0, radix: 16) } ?? "" }
+        // one event per line: a newline in a title must not start another
+        func text(_ value: String) -> String {
+            value.components(separatedBy: .newlines).joined(separator: " ")
+        }
         switch self {
-        case let .openWindow(id, workspace, bundleID, title):
-            return "openwindow>>\(address(id)),\(workspace),\(bundleID),\(title)"
-        case .closeWindow(let id):
-            return "closewindow>>\(address(id))"
-        case let .activeWindow(id, bundleID, title):
-            return id == nil ? "activewindow>>," : "activewindow>>\(bundleID),\(title)"
-        case .workspace(let id):
-            return "workspace>>\(id)"
+        case let .openWindow(window, workspace, bundleID, title):
+            return ["openwindow>>\(address(window)),\(workspace),\(text(bundleID)),\(text(title))"]
+        case .closeWindow(let window):
+            return ["closewindow>>\(address(window))"]
+        case let .activeWindow(window, bundleID, title):
+            return [window == nil ? "activewindow>>," : "activewindow>>\(text(bundleID)),\(text(title))",
+                    "activewindowv2>>\(address(window))"]
+        case .workspace(let workspace):
+            return ["workspace>>\(workspace)", "workspacev2>>\(id(workspace)),\(workspace)"]
         case let .focusedMonitor(_, name, workspace):
-            return "focusedmon>>\(name),\(workspace)"
-        case .createWorkspace(let id):
-            return "createworkspace>>\(id)"
-        case .destroyWorkspace(let id):
-            return "destroyworkspace>>\(id)"
-        case let .moveWindow(id, workspace):
-            return "movewindow>>\(address(id)),\(workspace)"
+            return ["focusedmon>>\(text(name)),\(workspace)", "focusedmonv2>>\(text(name)),\(id(workspace))"]
+        case .createWorkspace(let workspace):
+            return ["createworkspace>>\(workspace)", "createworkspacev2>>\(id(workspace)),\(workspace)"]
+        case .destroyWorkspace(let workspace):
+            return ["destroyworkspace>>\(workspace)", "destroyworkspacev2>>\(id(workspace)),\(workspace)"]
+        case let .moveWindow(window, workspace):
+            return ["movewindow>>\(address(window)),\(workspace)",
+                    "movewindowv2>>\(address(window)),\(id(workspace)),\(workspace)"]
         case let .activeSpecial(name, monitorName):
-            return "activespecial>>\(name.map { "special:\($0)" } ?? ""),\(monitorName)"
-        case let .changeFloatingMode(id, floating):
-            return "changefloatingmode>>\(address(id)),\(floating ? 1 : 0)"
-        case let .windowTitle(id, _):
-            return "windowtitle>>\(address(id))"
+            let workspace = name.map { WorkspaceID.special($0) }
+            return ["activespecial>>\(workspace?.description ?? ""),\(text(monitorName))",
+                    "activespecialv2>>\(workspace.map { String(id($0)) } ?? ""),\(workspace?.description ?? ""),\(text(monitorName))"]
+        case let .changeFloatingMode(window, floating):
+            return ["changefloatingmode>>\(address(window)),\(floating ? 1 : 0)"]
+        case let .windowTitle(window, title):
+            return ["windowtitle>>\(address(window))", "windowtitlev2>>\(address(window)),\(text(title))"]
         case .submap(let name):
-            return "submap>>\(name)"
+            return ["submap>>\(name)"]
         case .configReloaded:
-            return "configreloaded>>"
-        case .monitorAdded(let name):
-            return "monitoradded>>\(name)"
-        case .monitorRemoved(let name):
-            return "monitorremoved>>\(name)"
+            return ["configreloaded>>"]
+        case let .monitorAdded(index, name):
+            return ["monitoradded>>\(text(name))", "monitoraddedv2>>\(index),\(text(name)),\(text(name))"]
+        case let .monitorRemoved(index, name):
+            return ["monitorremoved>>\(text(name))", "monitorremovedv2>>\(index),\(text(name)),\(text(name))"]
         }
     }
 }

@@ -280,6 +280,55 @@ public final class LuaConfigRuntime {
         return outcome
     }
 
+    /// Run Lua sent by `hyprdarwinctl dispatch`, in this config's state:
+    /// an expression whose value is a dispatcher (a function value is called
+    /// first, and what it returns dispatched), or statements that call
+    /// dispatchers themselves (`hl.dsp.focus({ workspace = 2 })()`).
+    public func evaluate(_ code: String) -> CallOutcome {
+        pendingActions.removeAll()
+        callMessages.removeAll()
+        hd_set_budget(L, Self.callbackBudget)
+        let top = lua_gettop(L)
+        defer {
+            lua_settop(L, top)
+            hd_set_budget(L, 0)
+            pendingActions.removeAll()
+            callMessages.removeAll()
+        }
+        func load(_ text: String) -> Int32 {
+            text.withCString { hd_load_buffer(L, $0, strlen($0), "=dispatch") }
+        }
+        var outcome = CallOutcome()
+        func finish(error: String? = nil) -> CallOutcome {
+            outcome.error = error
+            outcome.actions = error == nil ? pendingActions : []
+            outcome.messages = callMessages
+            return outcome
+        }
+        // an expression first, as the Lua REPL does; else statements
+        if load("return " + code) != LUA_OK {
+            hd_pop(L, 1)
+            guard load(code) == LUA_OK else { return finish(error: Lua.string(L, -1) ?? "cannot parse the Lua") }
+        }
+        guard hd_pcall(L, 0, 1) == LUA_OK else { return finish(error: Lua.string(L, -1) ?? "error while running the Lua") }
+        if lua_type(L, -1) == LUA_TFUNCTION {
+            guard hd_pcall(L, 0, 1) == LUA_OK else { return finish(error: Lua.string(L, -1) ?? "error while running the Lua") }
+        }
+        switch lua_type(L, -1) {
+        case LUA_TNIL:
+            break
+        case LUA_TTABLE where Lua.dispatcherIndex(L, -1).map { $0 < dispatchers.count } == true:
+            pendingActions.append(.dispatch(dispatchers[Lua.dispatcherIndex(L, -1)!]))
+        default:
+            let type = String(cString: lua_typename(L, lua_type(L, -1)))
+            return finish(error: "expected an hl.dsp.* dispatcher, got a \(type) value")
+        }
+        if pendingActions.isEmpty {
+            return finish(error: "nothing was dispatched (expected an hl.dsp.* dispatcher, e.g. hl.dsp.focus({ workspace = 2 }))")
+        }
+        return finish()
+    }
+
     private func invokeTop(name: String) -> CallOutcome {
         pendingActions.removeAll()
         callMessages.removeAll()

@@ -20,6 +20,7 @@ cask "hyprdarwin" do
   depends_on macos: :tahoe
 
   app "hyprdarwin.app"
+  binary "#{appdir}/hyprdarwin.app/Contents/MacOS/hyprdarwinctl"
 
   # Self-signed, not notarized: without this Gatekeeper refuses to open it.
   postflight do

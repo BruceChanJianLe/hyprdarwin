@@ -56,6 +56,9 @@ public final class WindowManager {
     /// Minimum sizes learned per app (bundle id), for the app's next windows.
     public internal(set) var appMinimumSizes: [String: CGSize] = [:]
     private var windowSequence = 0
+    /// Numbers of special workspaces, handed out on first use and never
+    /// reused while hyprdarwin runs (see `numericID(of:)`).
+    private var specialNumbers: [String: Int] = [:]
     private var pendingEvents: [WMEvent] = []
 
     public init(config: Config = Config()) {
@@ -83,6 +86,39 @@ public final class WindowManager {
     }
 
     public func monitor(id: MonitorID) -> Monitor? { monitors.first { $0.id == id } }
+
+    /// A monitor's position from the left: its id in queries and events,
+    /// and what a numeric monitor selector means.
+    public func monitorIndex(of id: MonitorID) -> Int? {
+        monitors.spatiallySorted.firstIndex { $0.id == id }
+    }
+
+    /// Hyprland's numeric workspace id: the number of a numbered workspace;
+    /// for special workspaces a negative number like Hyprland's, -99 for
+    /// "special" and -98, -97... for named ones in order of first use.
+    public func numericID(of id: WorkspaceID) -> Int {
+        switch id {
+        case .numbered(let number):
+            return number
+        case .special(let name):
+            if name == WorkspaceID.defaultSpecialName { return -99 }
+            if let number = specialNumbers[name] { return number }
+            let number = -98 + specialNumbers.count
+            specialNumbers[name] = number
+            return number
+        }
+    }
+
+    /// Hyprland's focusHistoryID: 0 for the most recently focused window,
+    /// 1 for the one before it...; nil for windows never focused.
+    public func focusHistoryID(of id: WindowID) -> Int? {
+        focusHistory.lastIndex(of: id).map { focusHistory.count - 1 - $0 }
+    }
+
+    /// The event's `EVENT>>DATA` lines.
+    public func eventLines(_ event: WMEvent) -> [String] {
+        event.lines { numericID(of: $0) }
+    }
 
     public func isVisible(_ id: WorkspaceID) -> Bool {
         guard let workspace = workspaces[id], let state = monitorStates[workspace.monitorID] else {
@@ -117,6 +153,7 @@ public final class WindowManager {
         let newIDs = Set(newMonitors.map(\.id))
         let removed = monitors.filter { !newIDs.contains($0.id) }
         let oldMonitors = monitors
+        let oldOrder = oldMonitors.spatiallySorted.map(\.id)
         monitors = newMonitors
 
         // workspaces of removed monitors move to the primary monitor, hidden
@@ -128,7 +165,7 @@ public final class WindowManager {
                 displacedWorkspaces[id] = gone.name
             }
             monitorStates[gone.id] = nil
-            emit(.monitorRemoved(gone.name))
+            emit(.monitorRemoved(index: oldOrder.firstIndex(of: gone.id) ?? 0, name: gone.name))
         }
 
         for monitor in newMonitors where !oldIDs.contains(monitor.id) {
@@ -150,7 +187,7 @@ public final class WindowManager {
                       let from = oldMonitors.first(where: { $0.id == current }) ?? self.monitor(id: current) {
                 reassign(workspace: start, to: monitor, from: from)
             }
-            if !oldIDs.isEmpty { emit(.monitorAdded(monitor.name)) }
+            if !oldIDs.isEmpty { emit(.monitorAdded(index: monitorIndex(of: monitor.id) ?? 0, name: monitor.name)) }
         }
 
         // a monitor whose active workspace was moved away needs a new one

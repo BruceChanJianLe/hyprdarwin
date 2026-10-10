@@ -31,6 +31,8 @@ BIN=$(swift build -c release --arch arm64 --show-bin-path)
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/hyprdarwin" "$APP/Contents/MacOS/hyprdarwin"
+# the command line client; the Homebrew cask links it into the PATH
+cp "$BIN/hyprdarwinctl" "$APP/Contents/MacOS/hyprdarwinctl"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" -e "s/__COMMIT__/$COMMIT/" -e "s/__ORIGIN__/$ORIGIN/" \
     Resources/Info.plist > "$APP/Contents/Info.plist"
 cp Sources/CLua/LICENSE "$APP/Contents/Resources/LICENSE-lua.txt"
@@ -42,7 +44,7 @@ swift scripts/render-icon.swift Resources/hyprdarwin-icon.svg build/AppIcon.icon
 iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 cp Resources/hyprdarwin-menubar.svg "$APP/Contents/Resources/MenuBarIcon.svg"
 
-set -- --force --timestamp=none --identifier io.github.brucechanjianle.hyprdarwin
+set -- --force --timestamp=none
 if [ -n "${HYPRDARWIN_KEYCHAIN:-}" ]; then
     set -- "$@" --keychain "$HYPRDARWIN_KEYCHAIN"
     FIND_IN="$HYPRDARWIN_KEYCHAIN"
@@ -51,12 +53,16 @@ else
 fi
 # shellcheck disable=SC2086
 if security find-certificate -c "$IDENTITY" $FIND_IN >/dev/null 2>&1; then
-    codesign "$@" --sign "$IDENTITY" "$APP"
-    echo "signed with \"$IDENTITY\""
+    SIGN_AS=$IDENTITY
 else
-    codesign "$@" --sign - "$APP"
+    SIGN_AS=-
     echo "warning: signing identity \"$IDENTITY\" not found; ad-hoc signed (Accessibility must be re-granted after each rebuild)" >&2
 fi
-codesign --verify --verbose=2 "$APP"
+# nested code first: the bundle's signature seals hyprdarwinctl's
+codesign "$@" --identifier io.github.brucechanjianle.hyprdarwinctl --sign "$SIGN_AS" "$APP/Contents/MacOS/hyprdarwinctl"
+codesign "$@" --identifier io.github.brucechanjianle.hyprdarwin --sign "$SIGN_AS" "$APP"
+[ "$SIGN_AS" = - ] || echo "signed with \"$IDENTITY\""
+codesign --verify --deep --strict --verbose=2 "$APP"
 codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => /designated requirement: /p'
-echo "built $APP: $("$APP/Contents/MacOS/hyprdarwin" --version)"
+"$APP/Contents/MacOS/hyprdarwinctl" --help >/dev/null
+echo "built $APP: $("$APP/Contents/MacOS/hyprdarwin" --version), with hyprdarwinctl"

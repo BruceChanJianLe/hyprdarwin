@@ -1,5 +1,6 @@
 import AppKit
 import HyprdarwinCore
+import HyprdarwinIPC
 
 enum Monitors {
     /// NSScreen geometry flipped into the global top-left space AX uses.
@@ -29,7 +30,11 @@ enum Exec {
         let path = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         let missing = ["/opt/homebrew/bin", "/usr/local/bin"].filter { !path.split(separator: ":").contains(Substring($0)) }
         environment["PATH"] = (missing + [path]).joined(separator: ":")
-        environment["HYPRDARWIN_INSTANCE_SIGNATURE"] = String(ProcessInfo.processInfo.processIdentifier)
+        // set by IPCService once the sockets are up (read live: setenv
+        // after launch is not always in ProcessInfo's copy)
+        if let signature = getenv(IPCPaths.signatureVariable) {
+            environment[IPCPaths.signatureVariable] = String(cString: signature)
+        }
         environment.merge(extra) { _, new in new }
         process.environment = environment
         process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser

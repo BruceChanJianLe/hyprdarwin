@@ -11,7 +11,7 @@ brew tap brucechanjianle/hyprdarwin
 brew install --cask brucechanjianle/hyprdarwin/hyprdarwin
 ```
 
-Upgrade with `brew upgrade --cask hyprdarwin`. On first launch, grant Accessibility in System Settings > Privacy & Security > Accessibility.
+The cask also links the `hyprdarwinctl` command line client. Upgrade with `brew upgrade --cask hyprdarwin`. On first launch, grant Accessibility in System Settings > Privacy & Security > Accessibility.
 
 ## nix-darwin (nix-homebrew)
 
