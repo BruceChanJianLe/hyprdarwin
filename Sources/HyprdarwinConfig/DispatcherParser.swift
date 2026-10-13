@@ -167,10 +167,9 @@ enum DispatcherParser {
             return fail("expected { x = ..., y = ..., relative = true|false }")
         case "window.center":
             return ok(.center, notes(ignoring: []))
-        case "window.cycle_next", "window.cycle_prev":
-            // Hyprland's cyclenext [prev] [tiled|floating]; cycle_prev starts backwards
-            let backwards = table["prev"].bool == true || table["next"].bool == false
-            let reverse = name == "window.cycle_prev" ? !backwards : backwards
+        case "window.cycle_next":
+            // Hyprland's cyclenext [prev] [tiled|floating]
+            let reverse = table["prev"].bool == true || table["next"].bool == false
             var filter = CycleFilter.all
             if table["floating"].bool == true { filter = .floating }
             if table["tiled"].bool == true { filter = .tiled }

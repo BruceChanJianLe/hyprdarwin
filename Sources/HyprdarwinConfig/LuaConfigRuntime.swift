@@ -162,7 +162,7 @@ public final class LuaConfigRuntime {
         }
         let namespaces: [String: [String]] = [
             "window": ["close", "kill", "signal", "float", "fullscreen", "fullscreen_state", "pseudo", "move",
-                       "swap", "center", "cycle_next", "cycle_prev", "tag", "clear_tags", "toggle_swallow", "pin",
+                       "swap", "center", "cycle_next", "tag", "clear_tags", "toggle_swallow", "pin",
                        "bring_to_top", "alter_zorder", "set_prop", "deny_from_group", "drag", "resize"],
             "workspace": ["rename", "change_id", "move", "swap_monitors", "toggle_special"],
             "group": [],

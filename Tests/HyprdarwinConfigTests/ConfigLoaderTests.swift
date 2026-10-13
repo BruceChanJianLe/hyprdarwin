@@ -326,7 +326,7 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
     @Test func hlDispatchRunsDispatchersInOrder() throws {
         let result = load("""
         hl.bind("HYPR + TAB", function()
-          hl.dispatch(hl.dsp.window.cycle_prev({ floating = true }))
+          hl.dispatch(hl.dsp.window.cycle_next({ floating = true, prev = true }))
           hl.dispatch(hl.dsp.window.bring_to_top())
         end)
         hl.bind("HYPR + B", function() hl.dispatch("cyclenext") end)
@@ -341,9 +341,6 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         }
         #expect(runtime.call(function: cycle).actions == [.dispatch(.cycleWindows(.floating, reverse: true)), .dispatch(.bringToTop)])
         #expect(runtime.call(function: bad).error?.contains("hl.dispatch expects an hl.dsp.* dispatcher") == true)
-        // cycle_prev with prev = true goes forwards again
-        let forwards = try #require(load("hl.bind(\"HYPR + T\", hl.dsp.window.cycle_prev({ prev = true }))").config)
-        #expect(forwards.binds[0].action == .dispatcher(.cycleWindows(.all, reverse: false)))
     }
 
     @Test func callbackErrorsAndBudgetsAreContained() throws {

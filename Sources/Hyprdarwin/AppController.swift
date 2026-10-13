@@ -524,15 +524,15 @@ final class AppController {
     }
 
     /// floating_on_top: raise the floating windows over tile `over`, bottom
-    /// first, once its own raise is done. An app may key a window it raises
-    /// (FocusTracker.isRaiseEcho); the tile is keyed again, without raising
-    /// it, when it shares an app with one of them.
+    /// first, once its own raise is done. The tile's app may key a window of
+    /// its own it raises (FocusTracker.isRaiseEcho); the tile is keyed again,
+    /// without raising it, when it shares an app with one of them.
     private func raiseFloating(_ floating: [WindowID], over: WindowID) {
         // paused, hyprdarwin leaves every window where the user puts it
         guard !paused, let pid = model.windows[over]?.info.pid else { return }
         let items = floating.compactMap { id in model.windows[id].map { (pid: $0.info.pid, id: id) } }
         Log.debug("raising floating windows \(floating) over \(over)")
-        focusTracker.raising(floating)
+        focusTracker.raising(items.filter { $0.pid == pid }.map(\.id))
         source.raise(items, after: pid) { [weak self] in
             guard let self, self.managing else { return }
             if items.contains(where: { $0.pid == pid }), self.model.focusedWindow == over, self.lastOSFocus == over,

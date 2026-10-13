@@ -41,14 +41,15 @@ public struct FocusTracker {
 
     public init() {}
 
-    /// hyprdarwin is raising `windows` over the focused tile
-    /// (`Effect.raiseFloating`).
+    /// hyprdarwin is raising `windows`, those in the focused tile's app,
+    /// over it (`Effect.raiseFloating`).
     public mutating func raising(_ windows: [WindowID], now: Date = Date()) {
         raised = (Set(windows), now)
     }
 
-    /// Whether the OS keying `id` is the echo of raising it: an app may key
-    /// a window it raises. Following it would take focus off the tile, and
+    /// Whether the OS keying `id` is the echo of raising it: the tile's app
+    /// may key a window of its own it raises; raising another app's window
+    /// does not activate that app. Following it would take focus off the tile, and
     /// focusing the tile again would raise the floating windows again, and
     /// so on; the tile keeps focus instead.
     public func isRaiseEcho(_ id: WindowID, now: Date = Date()) -> Bool {
