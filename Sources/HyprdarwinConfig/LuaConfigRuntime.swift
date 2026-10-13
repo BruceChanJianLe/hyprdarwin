@@ -62,6 +62,7 @@ public final class LuaConfigRuntime {
         case require
         case dispatcher
         case callDispatcher
+        case dispatch
         case setEnabled
         case isEnabled
         case macConfig
@@ -145,6 +146,7 @@ public final class LuaConfigRuntime {
         setBuiltin("on", .on)
         setBuiltin("exec_cmd", .execCmd)
         setBuiltin("env", .env)
+        setBuiltin("dispatch", .dispatch)
         for name in ["monitor", "curve", "animation", "gesture", "device", "permission", "layer_rule", "notify"] {
             setBuiltin(name, .ignored, "hl.\(name)")
         }
@@ -160,7 +162,7 @@ public final class LuaConfigRuntime {
         }
         let namespaces: [String: [String]] = [
             "window": ["close", "kill", "signal", "float", "fullscreen", "fullscreen_state", "pseudo", "move",
-                       "swap", "center", "cycle_next", "tag", "clear_tags", "toggle_swallow", "pin",
+                       "swap", "center", "cycle_next", "cycle_prev", "tag", "clear_tags", "toggle_swallow", "pin",
                        "bring_to_top", "alter_zorder", "set_prop", "deny_from_group", "drag", "resize"],
             "workspace": ["rename", "change_id", "move", "swap_monitors", "toggle_special"],
             "group": [],
@@ -516,6 +518,14 @@ public final class LuaConfigRuntime {
 
             case .callDispatcher:
                 guard let index = Lua.dispatcherIndex(L, 1), index < dispatchers.count else { return 0 }
+                pendingActions.append(.dispatch(dispatchers[index]))
+                return 0
+
+            case .dispatch:
+                // hl.dispatch(d): the same as calling d
+                guard let index = Lua.dispatcherIndex(L, 1), index < dispatchers.count else {
+                    return raise("hl.dispatch expects an hl.dsp.* dispatcher, e.g. hl.dispatch(hl.dsp.window.cycle_next())")
+                }
                 pendingActions.append(.dispatch(dispatchers[index]))
                 return 0
 

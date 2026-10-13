@@ -135,6 +135,7 @@ public struct ConfigReport: Equatable, Sendable {
         add("hd.hypr_key", \.hyprKey) { string($0.rawValue) }
         add("hd.hide_corner", \.hideCorner) { string($0.rawValue) }
         add("hd.border_radius", \.borderRadius, number)
+        add("hd.floating_on_top", \.floatingOnTop, bool)
         add("hd.unmanaged_apps", \.unmanagedApps) { "{ " + $0.sorted().map(string).joined(separator: ", ") + ($0.isEmpty ? "}" : " }") }
         for (name, value) in config.environment.sorted(by: { $0.key < $1.key }) {
             rows.append(Option(name: "hl.env \(name)", value: string(value), defaultValue: "nil"))

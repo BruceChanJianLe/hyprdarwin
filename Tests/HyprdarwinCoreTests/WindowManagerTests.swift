@@ -533,7 +533,7 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         let plan = manager.computePlan()
         #expect(manager.window(at: CGPoint(x: 200, y: 200), plan: plan) == 3, "floating windows sit on top")
         #expect(manager.window(at: CGPoint(x: 50, y: 700), plan: plan) == 1)
-        #expect(manager.focusFromCursor(1) == [.focus(1)])
+        #expect(manager.focusFromCursor(1) == [.focus(1), .raiseFloating(over: 1, [3])], "floating windows go back over the tile")
         #expect(manager.focusFromCursor(1).isEmpty)
         manager.swapWindows(1, 2)
         #expect(manager.computePlan().frame(of: 1)?.minX == 500)

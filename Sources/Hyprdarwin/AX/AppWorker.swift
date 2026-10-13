@@ -171,6 +171,21 @@ final class AppWorker {
         }
     }
 
+    /// Bring `id` to the front without focusing it (floating_on_top). A
+    /// minimized window stays in the Dock and a hidden app stays hidden.
+    /// `completion` runs on the worker thread once the app has answered.
+    func raiseWithoutFocus(_ id: WindowID, completion: @escaping () -> Void) {
+        perform { [self] in
+            defer { completion() }
+            guard !hidden, let element = elements[id], boolAttribute(element, kAXMinimizedAttribute) != true else { return }
+            AXUIElementPerformAction(element, kAXRaiseAction as CFString)
+        }
+    }
+
+    /// Run `block` on the worker thread once everything already asked of
+    /// this app is done.
+    func afterPending(_ block: @escaping () -> Void) { perform(block) }
+
     func close(_ id: WindowID) {
         perform { [self] in
             guard let element = elements[id] else { return }

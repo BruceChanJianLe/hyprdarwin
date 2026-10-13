@@ -11,6 +11,9 @@ public enum Effect: Equatable, Sendable {
     /// Give the keyboard back to an app, managed or not: its `window` when
     /// known, else whichever window the app keys itself. Raises nothing else.
     case activate(pid: Int32, window: WindowID?)
+    /// hd.config floating_on_top: raise `windows`, bottom first, back over
+    /// the tiled window `over` without taking the keyboard off it.
+    case raiseFloating(over: WindowID, [WindowID])
     case warpCursor(CGPoint)
     /// The active submap changed ("" is the global map).
     case submap(String)

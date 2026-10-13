@@ -23,7 +23,7 @@ extension WindowManager {
             // one fullscreen window per workspace
             if on { exitFullscreen(on: window.workspace) }
             windows[id]?.fullscreen = on ? mode : nil
-            return [.focus(id)]
+            return [.focus(id)] + raiseFloating(over: id)
         case let .moveToWorkspace(selector, follow):
             guard let id = focusedWindow, let target = resolve(workspace: selector) else { return [] }
             return move(id, to: target, follow: follow)
@@ -70,7 +70,8 @@ extension WindowManager {
             return focusMonitor(monitor)
         case .focusLast:
             guard let previous = focusHistory.dropLast().last(where: { windows[$0]?.isAway == false }) else { return [] }
-            var effects = externalFocus(previous)
+            // focus() raises the floating windows once the window is up
+            var effects = externalFocus(previous).filter { if case .raiseFloating = $0 { false } else { true } }
             effects += focus(previous, warp: true)
             return effects
         case .toggleSpecial(let name):
@@ -94,6 +95,9 @@ extension WindowManager {
             return retile()
         case let .cycleWindows(filter, reverse):
             return cycleWindows(filter, reverse: reverse)
+        case .bringToTop:
+            guard let id = focusedWindow, let window = windows[id], !window.isAway else { return [] }
+            return [.focus(id)] + raiseFloating(over: id)
         case .submap(let name):
             let target = (name == "reset" || name.isEmpty) ? "" : name
             guard target.isEmpty || config.submaps.contains(target) else {
@@ -400,7 +404,7 @@ extension WindowManager {
         } else {
             target = reverse ? candidates.last! : candidates.first!
         }
-        guard target != focusedWindow else { return [.focus(target)] }
+        guard target != focusedWindow else { return [.focus(target)] + raiseFloating(over: target) }
         return focus(target, warp: true)
     }
 
@@ -546,7 +550,7 @@ extension WindowManager {
     public func focusFromCursor(_ id: WindowID) -> [Effect] {
         guard config.followMouse == 1, focusedWindow != id, let window = windows[id], isVisible(window.workspace) else { return [] }
         markFocused(id)
-        return [.focus(id)]
+        return [.focus(id)] + raiseFloating(over: id)
     }
 
     /// The visible window under `point`: floating and fullscreen windows

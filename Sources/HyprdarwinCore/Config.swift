@@ -134,6 +134,11 @@ public struct Config: Sendable {
     public var unmanagedApps: Set<String> = []
     public var hyprKey = HyprKeyMode.capsLock
     public var hideCorner = HideCorner.bottomRight
+    /// hd.config floating_on_top: floating windows stay above the tiled
+    /// windows of their workspace, as in Hyprland. macOS lets no app set
+    /// another app's window level, so they are raised again whenever a
+    /// tiled window takes focus or comes to the front.
+    public var floatingOnTop = true
 
     public var binds: [Keybind] = []
     public var submaps: Set<String> = []

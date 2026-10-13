@@ -8,6 +8,7 @@ final class WindowSource {
     var onEvent: ((WorkerEvent) -> Void)?
     private var workers: [pid_t: AppWorker] = [:]
     private var observers: [NSObjectProtocol] = []
+    private var raiseGeneration = 0
     private let selfPID = ProcessInfo.processInfo.processIdentifier
 
     func start() {
@@ -91,6 +92,28 @@ final class WindowSource {
             NSRunningApplication(processIdentifier: pid)?.activate()
         }
         workers[pid]?.raise(id)
+    }
+
+    /// Bring windows to the front in order, without focusing them: each
+    /// one once the one before is up (every app raises on its own worker),
+    /// starting after whatever app `after` was already asked to do (a focus
+    /// raising its window). A newer call stops an older one. `completion`
+    /// runs on the main thread when the last window is up.
+    func raise(_ items: [(pid: pid_t, id: WindowID)], after pid: pid_t, completion: @escaping () -> Void) {
+        raiseGeneration += 1
+        let generation = raiseGeneration
+        var remaining = items[...]
+        func next() {
+            guard generation == raiseGeneration else { return }
+            guard let item = remaining.popFirst() else {
+                completion()
+                return
+            }
+            guard let worker = workers[item.pid] else { return next() }
+            worker.raiseWithoutFocus(item.id) { DispatchQueue.main.async(execute: next) }
+        }
+        guard let worker = workers[pid] else { return next() }
+        worker.afterPending { DispatchQueue.main.async(execute: next) }
     }
 
     func close(pid: pid_t, id: WindowID) {

@@ -10,12 +10,18 @@ import Foundation
 /// - an app that already has a window on a hidden workspace keys that one
 ///   first, so switching to a hidden window waits `switchDelay`, and a new
 ///   window of the same app opening hidden meanwhile cancels the switch.
+///
+/// It also tells the echo of raising floating windows (floating_on_top)
+/// apart from the user keying one of them.
 public struct FocusTracker {
     /// How long after opening a window macOS keying it counts as the open.
     public static let openGrace: TimeInterval = 2
     /// How long a switch to a hidden window's workspace waits for a new
     /// window of the same app.
     public static let switchDelay: TimeInterval = 0.4
+    /// How long after hyprdarwin raises floating windows the OS keying one
+    /// of them counts as the raise, not the user.
+    public static let raiseEchoGrace: TimeInterval = 1
 
     struct Pending {
         var id: WindowID
@@ -31,8 +37,24 @@ public struct FocusTracker {
     private var openedAt: [WindowID: Date] = [:]
     private var unknownFocus: Pending?
     private var deferredSwitch: Pending?
+    private var raised: (windows: Set<WindowID>, at: Date)?
 
     public init() {}
+
+    /// hyprdarwin is raising `windows` over the focused tile
+    /// (`Effect.raiseFloating`).
+    public mutating func raising(_ windows: [WindowID], now: Date = Date()) {
+        raised = (Set(windows), now)
+    }
+
+    /// Whether the OS keying `id` is the echo of raising it: an app may key
+    /// a window it raises. Following it would take focus off the tile, and
+    /// focusing the tile again would raise the floating windows again, and
+    /// so on; the tile keeps focus instead.
+    public func isRaiseEcho(_ id: WindowID, now: Date = Date()) -> Bool {
+        guard let raised, raised.windows.contains(id) else { return false }
+        return now.timeIntervalSince(raised.at) < Self.raiseEchoGrace
+    }
 
     /// Track the keyboard's owner: a new frontmost app, or a new focused
     /// window within it (an app reporting no window keeps the one it had).
@@ -92,6 +114,7 @@ public struct FocusTracker {
         openedAt[id] = nil
         if unknownFocus?.id == id { unknownFocus = nil }
         if deferredSwitch?.id == id { deferredSwitch = nil }
+        raised?.windows.remove(id)
     }
 
     /// `switchDelay` after a deferred switch: bring the hidden window's

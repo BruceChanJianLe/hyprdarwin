@@ -1,5 +1,6 @@
 import AppKit
 import HyprdarwinConfig
+import HyprdarwinCore
 
 /// The menu bar item: status, current workspace, Reload, Open Config,
 /// Settings, Show Errors, Pause and Quit.
@@ -16,6 +17,8 @@ final class MenuBarController: NSObject {
         var workspace = "1"
         var special: String?
         var submap = ""
+        /// The focused window's fullscreen mode, while it has one.
+        var fullscreen: FullscreenMode?
         var messages: [ConfigMessage] = []
         var configPath = ""
     }
@@ -61,6 +64,8 @@ final class MenuBarController: NSObject {
         item.button?.image?.isTemplate = true
         var title = state.status == .waitingForAccessibility ? "" : state.workspace
         if let special = state.special { title += " · \(special)" }
+        // a fullscreen window hides everything else, floating windows too: "2 · FULLSCREEN"
+        if let mode = state.fullscreen { title += " · \(mode == .fullscreen ? "FULLSCREEN" : "MAXIMIZED")" }
         // an active submap stands out in capitals: "2 · RESIZE"
         if !state.submap.isEmpty { title += " · \(state.submap.uppercased())" }
         item.button?.title = title.isEmpty ? "" : " \(title)"
@@ -80,6 +85,7 @@ final class MenuBarController: NSObject {
             var workspace = "Workspace \(state.workspace)"
             if let special = state.special { workspace += " (special:\(special) open)" }
             menu.addItem(disabled(workspace))
+            if let mode = state.fullscreen { menu.addItem(disabled("Focused window: \(mode.rawValue)")) }
             if !state.submap.isEmpty { menu.addItem(disabled("Submap: \(state.submap)")) }
         }
         menu.addItem(.separator())

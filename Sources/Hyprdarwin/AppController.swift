@@ -41,6 +41,9 @@ final class AppController {
     private var awayKnown: [pid_t: Set<WindowID>] = [:]
     private var lastPlan = Plan()
     private var lastOSFocus: WindowID?
+    /// An app that just came to the front, until its focus report arrives.
+    private var activatedPID: pid_t?
+    private var raiseEchoRecheckPending = false
     private var focusTracker = FocusTracker()
     private var listingProbe = ListingProbe()
     private var probeTimer: Timer?
@@ -48,6 +51,7 @@ final class AppController {
     private var lastHoverCheck = Date.distantPast
     private var trustTimer: Timer?
     private var mouseMonitor: Any?
+    private var clickMonitor: Any?
     private var observers: [NSObjectProtocol] = []
     private var signalSources: [DispatchSourceSignal] = []
 
@@ -113,6 +117,7 @@ final class AppController {
         source.onEvent = { [weak self] event in self?.handle(event) }
         source.start()
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in self?.mouseMoved() }
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in self?.mouseUp() }
         probeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.probeListings() }
 
         let center = NotificationCenter.default
@@ -128,6 +133,7 @@ final class AppController {
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             guard let self else { return }
             self.focusTracker.noteKeyboard(pid: app.processIdentifier, window: nil, model: self.model)
+            self.activatedPID = app.processIdentifier
         })
         observers.append(workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
@@ -368,6 +374,8 @@ final class AppController {
                 Log.info("focusing window \(id) (\(window.info.bundleID))")
                 lastOSFocus = id
                 source.focus(pid: pid, id: id)
+            case let .raiseFloating(over, floating):
+                raiseFloating(floating, over: over)
             case let .activate(pid, window):
                 Log.info("giving the keyboard back to pid \(pid) window \(window.map(String.init) ?? "-")")
                 lastOSFocus = window
@@ -459,7 +467,20 @@ final class AppController {
             // background apps change their own focused window too; only the
             // frontmost app's focus is the keyboard's (activation re-reports it)
             guard pid == NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+            let activated = activatedPID == pid
+            activatedPID = nil
+            if let id, focusTracker.isRaiseEcho(id) {
+                // the app keyed a floating window we raised: the tile keeps focus
+                Log.debug("window \(id) keyed by its raise; keeping focus")
+                recheckAfterRaiseEcho()
+                return
+            }
             focusTracker.noteKeyboard(pid: pid, window: id, model: model)
+            // the app came to the front with the keyboard where it was, its
+            // windows with it: the floating ones go back on top
+            if activated, let id, id == lastOSFocus, id == model.focusedWindow {
+                perform(model.raiseFloating(over: id))
+            }
             handleOSFocus(id, pid: pid)
         case .applied(let results):
             // our own write read back: the real frame, never a user move
@@ -499,6 +520,41 @@ final class AppController {
             guard let self, self.managing else { return }
             self.perform(self.focusTracker.switchDue(model: self.model, keyboardOn: self.lastOSFocus))
             self.refresh()
+        }
+    }
+
+    /// floating_on_top: raise the floating windows over tile `over`, bottom
+    /// first, once its own raise is done. An app may key a window it raises
+    /// (FocusTracker.isRaiseEcho); the tile is keyed again, without raising
+    /// it, when it shares an app with one of them.
+    private func raiseFloating(_ floating: [WindowID], over: WindowID) {
+        // paused, hyprdarwin leaves every window where the user puts it
+        guard !paused, let pid = model.windows[over]?.info.pid else { return }
+        let items = floating.compactMap { id in model.windows[id].map { (pid: $0.info.pid, id: id) } }
+        Log.debug("raising floating windows \(floating) over \(over)")
+        focusTracker.raising(floating)
+        source.raise(items, after: pid) { [weak self] in
+            guard let self, self.managing else { return }
+            if items.contains(where: { $0.pid == pid }), self.model.focusedWindow == over, self.lastOSFocus == over,
+               NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
+                SkyLight.makeKeyWindow(pid: pid, windowID: over)
+            }
+            // the border panels go back above their windows
+            self.updateBorders()
+        }
+    }
+
+    /// Once raising has settled, ask where the keyboard really is: if the
+    /// app kept it on the raised window, focus follows it after all.
+    private func recheckAfterRaiseEcho() {
+        guard !raiseEchoRecheckPending else { return }
+        raiseEchoRecheckPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + FocusTracker.raiseEchoGrace) { [weak self] in
+            guard let self else { return }
+            self.raiseEchoRecheckPending = false
+            guard self.managing else { return }
+            self.lastOSFocus = nil
+            self.source.reportFrontmostFocus()
         }
     }
 
@@ -551,6 +607,16 @@ final class AppController {
         guard WindowStack.topmostNormalWindow(at: point) == id else { return }
         perform(model.focusFromCursor(id))
         refresh()
+    }
+
+    /// A click brings its window to the front: on the focused tile, the
+    /// floating windows go back over it.
+    private func mouseUp() {
+        guard managing, !paused, let id = model.focusedWindow, id == lastOSFocus else { return }
+        let effects = model.raiseFloating(over: id)
+        // only when the click landed on the tile, not on a menu or another app
+        guard !effects.isEmpty, WindowStack.topmostNormalWindow(at: FrameApplier.cursorLocation()) == id else { return }
+        perform(effects)
     }
 
     private func refresh() {
@@ -643,6 +709,7 @@ final class AppController {
             state.special = monitorState.special
         }
         state.submap = model.submap
+        state.fullscreen = model.focusedFullscreen
         state.messages = messages
         state.configPath = watcher.path
         menu.update(state)

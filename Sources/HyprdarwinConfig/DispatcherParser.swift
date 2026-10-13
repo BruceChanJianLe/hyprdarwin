@@ -20,7 +20,6 @@ enum DispatcherParser {
         "window.tag": "window.tag is not supported yet",
         "window.clear_tags": "window.clear_tags is not supported yet",
         "window.toggle_swallow": "swallowing is not supported",
-        "window.bring_to_top": "z-order control is not supported",
         "window.alter_zorder": "z-order control is not supported",
         "window.set_prop": "window.set_prop is not supported",
         "window.deny_from_group": "groups are not supported",
@@ -168,17 +167,20 @@ enum DispatcherParser {
             return fail("expected { x = ..., y = ..., relative = true|false }")
         case "window.center":
             return ok(.center, notes(ignoring: []))
-        case "window.cycle_next":
-            // Hyprland's cyclenext [prev] [tiled|floating]
-            let reverse = table["prev"].bool == true || table["next"].bool == false
+        case "window.cycle_next", "window.cycle_prev":
+            // Hyprland's cyclenext [prev] [tiled|floating]; cycle_prev starts backwards
+            let backwards = table["prev"].bool == true || table["next"].bool == false
+            let reverse = name == "window.cycle_prev" ? !backwards : backwards
             var filter = CycleFilter.all
             if table["floating"].bool == true { filter = .floating }
             if table["tiled"].bool == true { filter = .tiled }
             var extra: [String] = []
             if table["visible"] != .none || table["hist"] != .none {
-                extra.append("hl.dsp.window.cycle_next: visible and hist are not supported yet (ignored)")
+                extra.append("\(display): visible and hist are not supported yet (ignored)")
             }
             return ok(.cycleWindows(filter, reverse: reverse), extra)
+        case "window.bring_to_top":
+            return ok(.bringToTop, notes(ignoring: []))
 
         case "hd.cycle_layout":
             let direction = first.text ?? table["direction"].text ?? "next"
