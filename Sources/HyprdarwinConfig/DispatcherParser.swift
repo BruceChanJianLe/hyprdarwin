@@ -20,7 +20,6 @@ enum DispatcherParser {
         "window.tag": "window.tag is not supported yet",
         "window.clear_tags": "window.clear_tags is not supported yet",
         "window.toggle_swallow": "swallowing is not supported",
-        "window.bring_to_top": "z-order control is not supported",
         "window.alter_zorder": "z-order control is not supported",
         "window.set_prop": "window.set_prop is not supported",
         "window.deny_from_group": "groups are not supported",
@@ -176,9 +175,11 @@ enum DispatcherParser {
             if table["tiled"].bool == true { filter = .tiled }
             var extra: [String] = []
             if table["visible"] != .none || table["hist"] != .none {
-                extra.append("hl.dsp.window.cycle_next: visible and hist are not supported yet (ignored)")
+                extra.append("\(display): visible and hist are not supported yet (ignored)")
             }
             return ok(.cycleWindows(filter, reverse: reverse), extra)
+        case "window.bring_to_top":
+            return ok(.bringToTop, notes(ignoring: []))
 
         case "hd.cycle_layout":
             let direction = first.text ?? table["direction"].text ?? "next"

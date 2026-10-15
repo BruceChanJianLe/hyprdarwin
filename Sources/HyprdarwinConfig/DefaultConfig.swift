@@ -79,6 +79,7 @@ if hd then
         hypr_key    = "caps_lock",    -- "caps_lock", "f18" (already remapped elsewhere) or "none"
         hide_corner = "bottom-right", -- where hidden workspaces' windows are parked
         border_radius = 12,           -- corner radius of the borders, to match macOS windows
+        floating_on_top = true,       -- floating windows stay above the tiles of their workspace
         -- unmanaged_apps = { "com.mitchellh.ghostty" }, -- bundle ids hyprdarwin never moves
     })
 end
@@ -101,8 +102,18 @@ hl.bind(mod .. " + Q",      hl.dsp.window.close(),                     { descrip
 hl.bind(mod .. " + V",      hl.dsp.window.float({ action = "toggle" }), { description = "Toggle floating" })
 -- brings each floating window to the front in turn (windows too big to tile float too)
 hl.bind(mod .. " + SHIFT + V", hl.dsp.window.cycle_next({ floating = true }), { description = "Cycle floating windows" })
+-- Hyprland's usual cyclenext + bringactivetotop: focus the next (SHIFT: previous)
+-- window of the workspace and bring it to the front
+hl.bind(mod .. " + TAB", function()
+    hl.dispatch(hl.dsp.window.cycle_next())
+    hl.dispatch(hl.dsp.window.bring_to_top())
+end, { description = "Cycle windows" })
+hl.bind(mod .. " + SHIFT + TAB", function()
+    hl.dispatch(hl.dsp.window.cycle_next({ prev = true }))
+    hl.dispatch(hl.dsp.window.bring_to_top())
+end, { description = "Cycle windows backwards" })
 -- "maximized" fills the tiling area (inside gaps_out); "fullscreen" the whole screen below the menu bar.
--- Either way the workspace's other windows step aside until it ends.
+-- Either way the workspace's other windows step aside until it ends (the menu bar says so).
 hl.bind(mod .. " + F",         hl.dsp.window.fullscreen({ mode = "maximized" }), { description = "Toggle maximized" })
 hl.bind(mod .. " + SHIFT + F", hl.dsp.window.fullscreen(),                       { description = "Toggle fullscreen" })
 hl.bind(mod .. " + C",      hl.dsp.window.center(),                    { description = "Center floating window" })

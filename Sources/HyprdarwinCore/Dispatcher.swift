@@ -44,6 +44,9 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
     case focusLast
     /// hl.dsp.window.cycle_next: the next (or previous) window of the workspace.
     case cycleWindows(CycleFilter, reverse: Bool)
+    /// hl.dsp.window.bring_to_top: the focused window to the front (above
+    /// the other tiles; floating windows stay above a tile).
+    case bringToTop
     case toggleSpecial(String)
     case moveWorkspaceToMonitor(WorkspaceSelector?, MonitorSelector)
     case layoutMessage(String)
@@ -78,6 +81,7 @@ public enum Dispatcher: Equatable, Sendable, CustomStringConvertible {
         case .focusMonitor(let selector): return "focus(monitor=\(selector))"
         case .focusLast: return "focus(last)"
         case let .cycleWindows(filter, reverse): return "window.cycle_next(\(filter.rawValue)\(reverse ? ", prev" : ""))"
+        case .bringToTop: return "window.bring_to_top"
         case .toggleSpecial(let name): return "workspace.toggle_special(\(name))"
         case let .moveWorkspaceToMonitor(workspace, monitor):
             return "workspace.move(\(workspace.map { "workspace=\($0), " } ?? "")monitor=\(monitor))"

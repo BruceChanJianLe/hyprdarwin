@@ -70,8 +70,19 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(action("HYPR + P") == .dispatcher(.focusWorkspace(.existing(-1), onCurrentMonitor: false)))
         #expect(action("HYPR + bracketright") == .dispatcher(.focusWorkspace(.relativeOnMonitor(1), onCurrentMonitor: false)))
         #expect(action("HYPR + bracketleft") == .dispatcher(.focusWorkspace(.relativeOnMonitor(-1), onCurrentMonitor: false)))
-        #expect(action("HYPR + TAB") == nil, "HYPR is Caps Lock, next to Tab: no default Tab bind")
         #expect(action("HYPR + SHIFT + V") == .dispatcher(.cycleWindows(.floating, reverse: false)))
+        // Hyprland's usual SUPER + Tab: cyclenext, then bringactivetotop
+        let runtime = try #require(result.runtime)
+        for (keys, reverse) in [("HYPR + TAB", false), ("HYPR + SHIFT + TAB", true)] {
+            guard case .luaFunction(let ref)? = action(keys) else {
+                Issue.record("\(keys): expected a Lua function bind")
+                continue
+            }
+            let outcome = runtime.call(function: ref)
+            #expect(outcome.error == nil && outcome.messages.isEmpty, "\(outcome)")
+            #expect(outcome.actions == [.dispatch(.cycleWindows(.all, reverse: reverse)), .dispatch(.bringToTop)], "\(keys)")
+        }
+        #expect(config.floatingOnTop)
         let combos = config.binds.filter { $0.submap == nil }.map(\.combo)
         #expect(Set(combos).count == combos.count, "no two global binds share a key")
     }
@@ -185,6 +196,9 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(config.hyprKey == .f18)
         #expect(config.hideCorner == .bottomLeft)
         #expect(load("hd.config({ hypr_key = \"fn\" })").config == nil)
+        #expect(config.floatingOnTop, "floating windows stay on top by default, as in Hyprland")
+        #expect(load("hd.config({ floating_on_top = false })").config?.floatingOnTop == false)
+        #expect(load("hd.config({ floating_on_top = \"sometimes\" })").config == nil)
     }
 
     @Test func hyprlandOnlyCallsAreAccepted() throws {
@@ -307,6 +321,26 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(first.messages == [ConfigMessage(.info, "print: pressed\t1\ttrue\tnil")])
         let second = runtime.call(function: ref)
         #expect(second.actions.first == .dispatch(.focusWorkspace(.id(.numbered(2)), onCurrentMonitor: false)))
+    }
+
+    @Test func hlDispatchRunsDispatchersInOrder() throws {
+        let result = load("""
+        hl.bind("HYPR + TAB", function()
+          hl.dispatch(hl.dsp.window.cycle_next({ floating = true, prev = true }))
+          hl.dispatch(hl.dsp.window.bring_to_top())
+        end)
+        hl.bind("HYPR + B", function() hl.dispatch("cyclenext") end)
+        """)
+        #expect(result.messages.isEmpty, "\(result.messages)")
+        let config = try #require(result.config)
+        let runtime = try #require(result.runtime)
+        guard case .luaFunction(let cycle) = config.binds[0].action,
+              case .luaFunction(let bad) = config.binds[1].action else {
+            Issue.record("expected Lua function binds")
+            return
+        }
+        #expect(runtime.call(function: cycle).actions == [.dispatch(.cycleWindows(.floating, reverse: true)), .dispatch(.bringToTop)])
+        #expect(runtime.call(function: bad).error?.contains("hl.dispatch expects an hl.dsp.* dispatcher") == true)
     }
 
     @Test func callbackErrorsAndBudgetsAreContained() throws {

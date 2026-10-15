@@ -120,6 +120,12 @@ public final class WindowManager {
         event.lines { numericID(of: $0) }
     }
 
+    /// The focused window's fullscreen mode: it hides the rest of its
+    /// workspace, floating windows included, so the menu bar says so.
+    public var focusedFullscreen: FullscreenMode? {
+        focusedWindow.flatMap { windows[$0] }.flatMap { $0.isAway ? nil : $0.fullscreen }
+    }
+
     public func isVisible(_ id: WorkspaceID) -> Bool {
         guard let workspace = workspaces[id], let state = monitorStates[workspace.monitorID] else {
             // an active workspace that has no windows yet still counts
@@ -583,6 +589,7 @@ public final class WindowManager {
             effects += show(workspace: window.workspace)
         }
         markFocused(id)
+        effects += raiseFloating(over: id)
         return effects
     }
 
@@ -669,7 +676,7 @@ public final class WindowManager {
     func focus(_ id: WindowID, warp: Bool) -> [Effect] {
         guard windows[id] != nil else { return [] }
         markFocused(id)
-        var effects: [Effect] = [.focus(id)]
+        var effects: [Effect] = [.focus(id)] + raiseFloating(over: id)
         if warp, config.followMouse == 1, !config.noWarps, let frame = computePlan().frame(of: id) {
             if cursor.map({ !frame.contains($0) }) ?? true {
                 effects.append(.warpCursor(frame.center))
@@ -677,6 +684,36 @@ public final class WindowManager {
             }
         }
         return effects
+    }
+
+    /// hd.config floating_on_top: the windows that float on top of tile
+    /// `id`'s workspace (floating ones, and tiles floating because they do
+    /// not fit), in the order to raise them: never focused ones by arrival,
+    /// then the rest by focus, so the most recently focused ends on top.
+    /// None when the option is off, `id` is not a tile on screen, or a
+    /// fullscreen window or an open special workspace stays above them.
+    func floatingWindowsToRaise(over id: WindowID) -> [WindowID] {
+        guard config.floatingOnTop, let window = windows[id], !window.isFloating, !window.isAway,
+              isVisible(window.workspace) else { return [] }
+        let workspace = window.workspace
+        if !workspace.isSpecial, let monitorID = workspaces[workspace]?.monitorID,
+           monitorStates[monitorID]?.special != nil { return [] }
+        // windows on another macOS Space are not on screen; raising one could switch Spaces
+        let here = windows.values.filter { $0.workspace == workspace && !$0.isAway }
+        guard !here.contains(where: { $0.fullscreen != nil }) else { return [] }
+        let overflow = Set(tiledFrames(for: workspace).overflow)
+        guard !overflow.contains(id) else { return [] }
+        return here.filter { $0.isFloating || overflow.contains($0.id) }
+            .map { (id: $0.id, order: (focusHistory.lastIndex(of: $0.id) ?? -1, $0.sequence, $0.id)) }
+            .sorted { $0.order < $1.order }
+            .map(\.id)
+    }
+
+    /// The raise that puts the floating windows back over tile `id`, if any
+    /// (after it took focus, or its app came to the front).
+    public func raiseFloating(over id: WindowID) -> [Effect] {
+        let floating = floatingWindowsToRaise(over: id)
+        return floating.isEmpty ? [] : [.raiseFloating(over: id, floating)]
     }
 
     /// The window of `workspace` focused most recently, skipping windows on

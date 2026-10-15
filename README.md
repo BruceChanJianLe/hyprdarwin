@@ -201,7 +201,7 @@ hl.on("hyprland.start", function()
 end)
 ```
 
-The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE goes to the next layout (dwindle, then tmux's seven); HYPR + V floats a window and HYPR + SHIFT + V cycles through the floating ones; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + N / P go to the next / previous workspace that has windows and HYPR + ] / [ to the next / previous one on this display, empty ones included; HYPR + R re-tiles, HYPR + SHIFT + R enters a resize submap (the arrows or h/j/k/l move the focused window's border that way, Escape or Return leaves), HYPR + CTRL + R reloads the config, HYPR + S toggles the scratchpad, HYPR + F maximizes. There is no HYPR + TAB bind: Caps Lock sits right next to Tab.
+The generated default config (`Sources/HyprdarwinConfig/DefaultConfig.swift`) uses vim-style binds: HYPR + h/j/k/l moves focus, + SHIFT swaps, + CTRL moves (the arrow keys work too); HYPR + SPACE toggles the split and HYPR + SHIFT + SPACE goes to the next layout (dwindle, then tmux's seven); HYPR + V floats a window and HYPR + SHIFT + V cycles through the floating ones; HYPR + TAB / HYPR + SHIFT + TAB focus the next / previous window of the workspace and bring it to the front; HYPR + 1-0 and HYPR + SHIFT + 1-0 switch and move between workspaces 1-10; HYPR + N / P go to the next / previous workspace that has windows and HYPR + ] / [ to the next / previous one on this display, empty ones included; HYPR + R re-tiles, HYPR + SHIFT + R enters a resize submap (the arrows or h/j/k/l move the focused window's border that way, Escape or Return leaves), HYPR + CTRL + R reloads the config, HYPR + S toggles the scratchpad, HYPR + F maximizes.
 
 ### API reference
 
@@ -217,10 +217,18 @@ Calls:
 | `hl.on(event, function)` | `"hyprland.start"` / `"hyprdarwin.start"` (first load only), `"hyprland.shutdown"` / `"hyprdarwin.shutdown"` |
 | `hl.exec_cmd(cmd)` | Runs a shell command now (at load time: on every load) |
 | `hl.env(name, value)` | Exported to commands hyprdarwin runs |
-| `hd.config(table)` | macOS only: `hypr_key` (`"caps_lock"`, `"f18"`, `"none"`), `hide_corner` (`"bottom-right"`, `"bottom-left"`), `unmanaged_apps` (bundle ids hyprdarwin never moves or focuses, e.g. `{ "com.mitchellh.ghostty" }`), `border_radius` (corner radius of the borders, default 12). `hd` is nil on Hyprland, so guard with `if hd then` |
+| `hl.dispatch(dispatcher)` | Runs an `hl.dsp.*` dispatcher, the same as calling it |
+| `hd.config(table)` | macOS only: `hypr_key` (`"caps_lock"`, `"f18"`, `"none"`), `hide_corner` (`"bottom-right"`, `"bottom-left"`), `unmanaged_apps` (bundle ids hyprdarwin never moves or focuses, e.g. `{ "com.mitchellh.ghostty" }`), `border_radius` (corner radius of the borders, default 12), `floating_on_top` (default `true`: floating windows stay above the tiles of their workspace, as in Hyprland; see Using it). `hd` is nil on Hyprland, so guard with `if hd then` |
 | `hl.monitor`, `hl.curve`, `hl.animation`, `hl.gesture`, `hl.device`, `hl.permission`, `hl.layer_rule` | Accepted and ignored |
 
-Calling a dispatcher runs it: `hl.dsp.focus({ workspace = 2 })()` inside a bound function, or at the top level of the config (it then runs after each load).
+Calling a dispatcher (or passing it to `hl.dispatch`) runs it: `hl.dsp.focus({ workspace = 2 })()` inside a bound function, or at the top level of the config (it then runs after each load). A bound function can run several in order, like Hyprland's SUPER + Tab example (the default config binds it to HYPR + TAB):
+
+```lua
+hl.bind("SUPER + Tab", function()
+    hl.dispatch(hl.dsp.window.cycle_next())   -- focus the next window
+    hl.dispatch(hl.dsp.window.bring_to_top()) -- and bring it to the front
+end)
+```
 
 Keys: modifiers `HYPR`, `CMD` (aliases `SUPER`, `COMMAND`), `ALT` (`OPT`, `OPTION`), `CTRL`, `SHIFT`; keys `a`-`z`, `0`-`9`, `F1`-`F20`, `return`/`enter`, `escape`, `space`, `tab`, `backspace`, `delete`, `left`/`right`/`up`/`down`, `home`, `end`, `pageup`, `pagedown`, `minus`, `equal`, `bracketleft`, `bracketright`, `semicolon`, `apostrophe`, `grave`, `backslash`, `comma`, `period`, `slash`, or `code:<keycode>`. Flags: `repeating`, `release`, `description`.
 
@@ -252,7 +260,7 @@ Dispatchers (`hl.dsp.*`):
 | `exec_cmd(cmd)` | shell command |
 | `window.close()`, `window.kill()` | kill force-quits the app |
 | `window.float({ action })` | `toggle` (default), `set`, `unset` |
-| `window.fullscreen({ mode, action })` | `mode`: `fullscreen` (fills the screen below the menu bar) or `maximized` (inside gaps_out). The workspace's other windows are parked until it ends (or you focus one of them, or a new window opens there). Emulated; native macOS fullscreen is left alone |
+| `window.fullscreen({ mode, action })` | `mode`: `fullscreen` (fills the screen below the menu bar) or `maximized` (inside gaps_out). The workspace's other windows are parked until it ends (or you focus one of them, or a new window opens there); meanwhile the menu bar shows `FULLSCREEN` (or `MAXIMIZED`). Emulated; native macOS fullscreen is left alone |
 | `window.move({ direction })` | swap with the neighbour, or move to the next monitor |
 | `window.move({ workspace, follow })` | `follow = false` is Hyprland's movetoworkspacesilent |
 | `window.move({ monitor, follow })`, `window.move({ x, y, relative })` | x/y moves floating windows |
@@ -265,6 +273,7 @@ Dispatchers (`hl.dsp.*`):
 | `layout(message)` | dwindle: `togglesplit`, `swapsplit`, `splitratio <delta>` / `splitratio exact <v>`; master: `swapwithmaster`, `focusmaster`, `addmaster`, `removemaster`, `mfact <delta>` / `mfact exact <v>`, `orientation{left,right,top,bottom,next,prev}`, `cyclenext`, `cycleprev`, `swapnext`, `swapprev`, `rollnext`, `rollprev` |
 | `submap(name)`, `reload_config()`, `exit()`, `no_op()` | `exit` quits hyprdarwin |
 | `window.cycle_next({ floating, tiled, prev })` | focus and raise the next window of the workspace (Hyprland's `cyclenext`); `floating = true` only visits floating windows, including those floating because they do not fit, `tiled = true` only tiles, `prev = true` goes backwards |
+| `window.bring_to_top()` | the focused window to the front (Hyprland's `bringactivetotop`); a tile stays below the floating windows while `hd.config floating_on_top` is on |
 | `hd.dsp.cycle_layout({ direction })` | hyprdarwin only: the focused workspace takes the next (`direction = "prev"`: previous) layout of `dwindle`, `even-horizontal`, `even-vertical`, `main-horizontal`, `main-horizontal-mirrored`, `main-vertical`, `main-vertical-mirrored`, `tiled`, wrapping around: dwindle, then tmux's next-layout order. Kept across reloads |
 | `hd.dsp.retile()` | hyprdarwin only: re-tile. Every window gets its window rules again as if it had just opened (float or tile, `workspace` (silently), floating `size`/`move`/`center`, `fullscreen`, tags, borders; a window no rule decides keeps its floating state), every workspace's layout is rebuilt from its windows in their current order with default split ratios and mfact, and every window is written to its place again |
 | `hd.dsp.resize({ direction, amount })` | hyprdarwin only: moves the focused tile's border on the `direction` side (`left`, `right`, `up`, `down`, or `l`/`r`/`u`/`d`) that way by `amount` points (default 40), like tmux's resize-pane, so the border follows the arrow whichever side of it the window is on. At the screen's edge, where there is no border on that side, the border on the other side moves instead. Floating windows grow with `right`/`down` and shrink with `left`/`up` |
@@ -310,11 +319,11 @@ Some apps (Brave, WhatsApp...) refuse to shrink below a size. hyprdarwin learns 
 
 ## Using it
 
-- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has the version, Reload Config, Open Config, Settings, Show Errors, Pause/Resume, About and Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
+- **Menu bar**: the hyprdarwin droplet (a symbol instead while paused, waiting for Accessibility or with a config error), the current workspace, `FULLSCREEN` (or `MAXIMIZED`) while the focused window is fullscreen and hides the rest of its workspace, and, while a submap is active, its name in capitals (`2 · RESIZE`). The menu has the version, Reload Config, Open Config, Settings, Show Errors, Pause/Resume, About and Quit. Pause stops tiling and binds and brings parked windows back; Quit does the same before exiting.
 - **Workspaces** are virtual: windows on hidden workspaces are parked in the bottom-right corner of the right-most display with a 1 pt sliver left on screen. Use one macOS Space per display, and leave that corner free.
 - Clicking or Cmd-Tabbing to a window on a hidden workspace switches to that workspace. While `misc.focus_on_open` is off, the switch waits 0.4 s, so an app that opens a new window silently does not pull you over.
 - Dragging a tiled window onto another tile swaps them; any other drag snaps back.
-- Floating windows go on top when focused; HYPR + SHIFT + V brings each floating window to the front in turn. macOS gives no way to keep them above tiles that are clicked afterwards.
+- **Floating windows stay on top** of the tiles of their workspace, as in Hyprland (`hd.config({ floating_on_top = false })` turns it off). macOS lets no app set another app's window level, so whenever a tile takes focus or comes to the front (focused from the keyboard or the cursor, clicked, or its app activated), hyprdarwin raises that workspace's floating windows over it again, the most recently focused one on top, and the keyboard stays on the tile. Windows too big to tile, which float centred, count as floating. Minimized and hidden windows, windows on other workspaces or in native fullscreen, and a fullscreen (or maximized) window's workspace are left alone. HYPR + SHIFT + V brings each floating window to the front in turn.
 - **Borders** are drawn in the gap around the focused window, only while it really has the keyboard (an unmanaged app or hyprdarwin's own windows having it leaves every window inactive), and around the other visible windows when `general.col.inactive_border` or a rule's `border_color` is set. They are click-through overlays that never take focus. A `.fullscreen` window gets none.
 - Visiting another macOS Space, or an app's native fullscreen, leaves the tiling alone: every window keeps its workspace and tile, and is back in place on return. A window in native fullscreen keeps its tile for when it leaves fullscreen; meanwhile the others share its room.
 - Native macOS tabs (Ghostty, Finder, Terminal) are one tile: switching tabs keeps the tile where it is.

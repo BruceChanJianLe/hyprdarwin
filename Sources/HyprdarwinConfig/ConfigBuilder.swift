@@ -223,6 +223,11 @@ struct ConfigBuilder {
                     throw ConfigError("\(location) hd.config hide_corner: expected \"bottom-right\" or \"bottom-left\"")
                 }
                 config.hideCorner = corner
+            case "floating_on_top":
+                guard let flag = value.bool else {
+                    throw ConfigError("\(location) hd.config floating_on_top: expected true or false")
+                }
+                config.floatingOnTop = flag
             default:
                 note(.warning, "\(location) unknown hd.config option \(key)")
             }

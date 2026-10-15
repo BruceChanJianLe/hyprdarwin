@@ -179,6 +179,7 @@ private func decode<T: Decodable>(_ type: T.Type, _ text: String) throws -> T {
         #expect(options["master.mfact"]?.value == "0.55")
         #expect(options["hd.hypr_key"]?.value == "\"caps_lock\"")
         #expect(options["hd.unmanaged_apps"]?.value == "{ }")
+        #expect(options["hd.floating_on_top"]?.value == "true")
         #expect(report.submaps == ["resize"])
         #expect(report.binds.count == config.binds.count)
         #expect(report.binds.first { $0.description == "Terminal" }?.keys == "HYPR + RETURN")
