@@ -19,7 +19,7 @@ public enum DefaultConfig {
 -- ============================================================================
 
 -- HYPR is the Hypr key: Caps Lock, remapped to F18 by hyprdarwin while it runs.
--- Swap in "CMD + ALT" (or anything else) if you prefer.
+-- Swap in "CMD" if you prefer; leave CTRL, ALT and SHIFT out, the binds below add them.
 local mod = "HYPR"
 
 local terminal = "open -na Ghostty || open -a Terminal"
