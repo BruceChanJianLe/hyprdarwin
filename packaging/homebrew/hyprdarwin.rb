@@ -23,10 +23,10 @@ cask "hyprdarwin" do
   binary "#{appdir}/hyprdarwin.app/Contents/MacOS/hyprdarwinctl"
 
   # Self-signed, not notarized: without this Gatekeeper refuses to open it.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args:         ["-dr", "com.apple.quarantine", "#{appdir}/hyprdarwin.app"],
-                   must_succeed: false
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:         ["-dr", "com.apple.quarantine", "{{appdir}}/hyprdarwin.app"],
+        must_succeed: false
   end
 
   uninstall quit: "io.github.brucechanjianle.hyprdarwin"
