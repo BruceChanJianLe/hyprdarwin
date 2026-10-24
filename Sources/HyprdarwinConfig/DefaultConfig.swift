@@ -19,7 +19,7 @@ public enum DefaultConfig {
 -- ============================================================================
 
 -- HYPR is the Hypr key: Caps Lock, remapped to F18 by hyprdarwin while it runs.
--- Swap in "CMD + ALT" (or anything else) if you prefer.
+-- Swap in "CMD" if you prefer; leave CTRL, ALT and SHIFT out, the binds below add them.
 local mod = "HYPR"
 
 local terminal = "open -na Ghostty || open -a Terminal"
@@ -131,6 +131,7 @@ end
 
 -- Vim-style focus (h/j/k/l), swap (SHIFT) and move (CTRL); the arrow keys work too.
 -- Move swaps with the neighbour, or hops to the next monitor at the edge.
+-- ALT moves the window to the monitor that way; ALT + SHIFT focuses that monitor.
 local directions = {
     h = "left", j = "down", k = "up", l = "right",
     left = "left", down = "down", up = "up", right = "right",
@@ -139,6 +140,8 @@ for key, dir in pairs(directions) do
     hl.bind(mod .. " + " .. key,         hl.dsp.focus({ direction = dir }))
     hl.bind(mod .. " + SHIFT + " .. key, hl.dsp.window.swap({ direction = dir }))
     hl.bind(mod .. " + CTRL + " .. key,  hl.dsp.window.move({ direction = dir }))
+    hl.bind(mod .. " + ALT + " .. key,         hl.dsp.window.move({ monitor = dir }))
+    hl.bind(mod .. " + ALT + SHIFT + " .. key, hl.dsp.focus({ monitor = dir }))
 end
 
 -- Workspaces 1-10 (key 0 is workspace 10). SHIFT moves the window and follows it;

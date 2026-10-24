@@ -58,6 +58,12 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(action("HYPR + j") == .dispatcher(.focusDirection(.down)))
         #expect(action("HYPR + k") == .dispatcher(.focusDirection(.up)))
         #expect(action("HYPR + l") == .dispatcher(.focusDirection(.right)))
+        // ALT moves the window to the monitor that way, ALT + SHIFT focuses it
+        for (key, direction) in [("h", Direction.left), ("j", .down), ("k", .up), ("l", .right),
+                                 ("left", .left), ("down", .down), ("up", .up), ("right", .right)] {
+            #expect(action("HYPR + ALT + \(key)") == .dispatcher(.moveToMonitor(.direction(direction), follow: true)), "\(key)")
+            #expect(action("HYPR + ALT + SHIFT + \(key)") == .dispatcher(.focusMonitor(.direction(direction))), "\(key)")
+        }
         #expect(action("HYPR + SHIFT + l") == .dispatcher(.swapDirection(.right)))
         #expect(action("HYPR + left") == .dispatcher(.focusDirection(.left)))
         #expect(action("HYPR + SPACE") == .dispatcher(.layoutMessage("togglesplit")))
