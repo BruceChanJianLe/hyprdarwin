@@ -37,7 +37,7 @@ final class BorderController {
             let width = CGFloat(size)
             let rect = NSRect(x: frame.minX - width, y: primaryHeight - frame.maxY - width,
                               width: frame.width + 2 * width, height: frame.height + 2 * width)
-            panel.ring.configure(colors: colors, width: width, radius: CGFloat(config.borderRadius))
+            panel.ring.configure(colors: colors, width: width, radius: CGFloat(config.borderRadius(for: window)))
             if panel.frame != rect { panel.setFrame(rect, display: true) }
             // directly above its own window, below anything stacked above it
             panel.order(.above, relativeTo: Int(id))
@@ -112,7 +112,7 @@ private final class RingView: NSView {
         mask.frame = bounds
         if let (_, width, radius) = current {
             let path = CGMutablePath()
-            path.addRoundedRect(in: bounds, cornerWidth: radius + width, cornerHeight: radius + width)
+            path.addRoundedRect(in: bounds, cornerWidth: min(radius + width, bounds.width / 2), cornerHeight: min(radius + width, bounds.height / 2))
             let inner = bounds.insetBy(dx: width, dy: width)
             path.addRoundedRect(in: inner, cornerWidth: min(radius, inner.width / 2), cornerHeight: min(radius, inner.height / 2))
             mask.path = path

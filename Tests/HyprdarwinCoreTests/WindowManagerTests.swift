@@ -571,6 +571,41 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         #expect(manager.windows[2]?.borderSize == nil)
     }
 
+    @Test func borderRadiusPrefersRuleThenBuiltinThenBorderRadius() throws {
+        let manager = makeManager { config in
+            config.borderRadius = 12
+            config.windowRules = [
+                try! rule { match, effects in
+                    match.class = try RulePattern("^com\\.apple\\.TextEdit$")
+                    effects.rounding = 9
+                },
+                try! rule { match, effects in
+                    match.class = try RulePattern("^com\\.brave\\.Browser$")
+                    match.title = try RulePattern("Meet")
+                    effects.rounding = 0
+                },
+            ]
+        }
+        manager.addWindow(info(1, bundle: "com.apple.TextEdit"), isNew: true)
+        manager.addWindow(info(2, bundle: "com.brave.Browser", title: "Inbox"), isNew: true)
+        manager.addWindow(info(3, bundle: "com.brave.Browser", title: "Meet - standup"), isNew: true)
+        manager.addWindow(info(4, bundle: "com.apple.Safari", subrole: "AXDialog"), isNew: true)
+        manager.addWindow(info(5, bundle: "com.example.app"), isNew: true)
+        let config = manager.config
+        let radius = { (id: WindowID) in try #require(manager.windows[id]).rounding }
+        #expect(try radius(1) == 9, "a rule sets an app the table does not know")
+        #expect(config.borderRadius(for: try #require(manager.windows[1])) == 9)
+        #expect(config.borderRadius(for: try #require(manager.windows[2])) == AppRounding.table["com.brave.Browser"])
+        #expect(config.borderRadius(for: try #require(manager.windows[3])) == 0, "a rule wins over the built-in table")
+        #expect(config.borderRadius(for: try #require(manager.windows[4])) == 12, "the table covers standard windows only")
+        #expect(config.borderRadius(for: try #require(manager.windows[5])) == 12)
+        // the rule follows the title, like the other border rules
+        manager.updateInfo(info(3, bundle: "com.brave.Browser", title: "Inbox"))
+        #expect(config.borderRadius(for: try #require(manager.windows[3])) == AppRounding.table["com.brave.Browser"])
+        manager.setWindowRuleEnabled(0, false)
+        #expect(config.borderRadius(for: try #require(manager.windows[1])) == 12)
+    }
+
     @Test func adoptedWindowsSpiralInsteadOfSplittingTheFirstTile() {
         let manager = makeManager()
         for id: WindowID in 1...4 { manager.addWindow(info(id), isNew: false) }

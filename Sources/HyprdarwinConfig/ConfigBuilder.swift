@@ -208,7 +208,7 @@ struct ConfigBuilder {
                 }
                 config.hyprKey = mode
             case "border_radius":
-                guard let radius = value.double, radius >= 0 else {
+                guard let radius = value.double, radius >= 0, radius.isFinite else {
                     throw ConfigError("\(location) hd.config border_radius: expected a number >= 0")
                 }
                 config.borderRadius = radius
@@ -238,7 +238,7 @@ struct ConfigBuilder {
 
     static let ignoredRuleEffects: [String: String] = [
         "opacity": "ignored on macOS", "no_blur": "ignored on macOS", "no_shadow": "ignored on macOS",
-        "rounding": "ignored on macOS", "rounding_power": "ignored on macOS", "animation": "ignored on macOS",
+        "rounding_power": "ignored on macOS", "animation": "ignored on macOS",
         "no_anim": "ignored on macOS", "no_dim": "ignored on macOS", "dim_around": "ignored on macOS",
         "xray": "ignored on macOS", "decorate": "ignored on macOS", "idle_inhibit": "not supported yet",
         "suppress_event": "ignored on macOS", "keep_aspect_ratio": "ignored on macOS",
@@ -354,6 +354,9 @@ struct ConfigBuilder {
                 guard let size = value.int, size >= 0 else { throw fail("border_size must be a whole number >= 0") }
                 effects.borderSize = size
             case "no_border": if try flag() { effects.borderSize = 0 }
+            case "rounding":
+                guard let radius = value.double, radius >= 0, radius.isFinite else { throw fail("rounding must be a number >= 0") }
+                effects.rounding = radius
             case "tag":
                 let raw = try text()
                 effects.tags.append(raw.hasPrefix("+") || raw.hasPrefix("-") ? String(raw.dropFirst()) : raw)

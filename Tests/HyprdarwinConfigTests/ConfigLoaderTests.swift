@@ -396,11 +396,26 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(infos(result).contains { $0.contains("opacity is ignored on macOS") })
     }
 
+    @Test func roundingRuleSetsTheBorderRadius() throws {
+        let result = load(#"""
+        hl.window_rule({ match = { class = "^com\\.apple\\.TextEdit$" }, rounding = 18 })
+        hl.window_rule({ match = { title = "Preview" }, rounding = 0, dynamic = true })
+        """#)
+        let config = try #require(result.config, "\(result.messages)")
+        #expect(config.windowRules[0].effects.rounding == 18)
+        #expect(config.windowRules[1].effects.rounding == 0)
+        #expect(!infos(result).contains { $0.contains("rounding") }, "rounding is honoured, not ignored")
+    }
+
     @Test func badRulesFail() {
         #expect(load("hl.window_rule({ float = true })").errors.first?.text.contains("match = { ... } is required") == true)
         #expect(load("hl.window_rule({ match = { class = \"(\" }, float = true })").errors.first?.text.contains("invalid regular expression") == true)
         #expect(load("hl.window_rule({ match = { class = \"a\" }, workspace = \"three\" })").config == nil)
         #expect(load("hl.window_rule({ match = { class = \"a\" }, move = \"10\" })").config == nil)
+        #expect(load("hl.window_rule({ match = { class = \"a\" }, rounding = -1 })").errors.first?.text.contains("rounding must be a number >= 0") == true)
+        #expect(load("hl.window_rule({ match = { class = \"a\" }, rounding = math.huge })").errors.first?.text.contains("rounding must be a number >= 0") == true)
+        #expect(load("hd.config({ border_radius = math.huge })").errors.first?.text.contains("border_radius: expected a number >= 0") == true)
+        #expect(load("hl.window_rule({ match = { class = \"a\" }, rounding = \"big\" })").config == nil)
         let unknown = load("hl.window_rule({ match = { class = \"a\" }, frobnicate = true })")
         #expect(warnings(unknown).contains { $0.contains("unknown effect \"frobnicate\"") })
     }

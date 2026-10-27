@@ -113,6 +113,8 @@ public struct WindowRuleEffects: Sendable {
     // dynamic: re-applied whenever the window's title or state changes
     public var borderColor: BorderColor?
     public var borderSize: Int?
+    /// Corner radius of the border, in points.
+    public var rounding: Double?
 
     public init() {}
 
@@ -130,6 +132,7 @@ public struct WindowRuleEffects: Sendable {
         tags += later.tags
         if let v = later.borderColor { borderColor = v }
         if let v = later.borderSize { borderSize = v }
+        if let v = later.rounding { rounding = v }
     }
 }
 
@@ -159,13 +162,14 @@ public enum RuleEngine {
     }
 
     /// Effects re-applied on title/state change and config reload: border
-    /// and min_size always, float/tile only from rules marked `dynamic`.
+    /// rounding and min_size always, float/tile only from rules marked `dynamic`.
     public static func dynamicEffects(for window: ManagedWindow, rules: [WindowRule]) -> WindowRuleEffects {
         var result = WindowRuleEffects()
         for rule in rules where rule.enabled && rule.match.matches(window) {
             var effects = WindowRuleEffects()
             effects.borderColor = rule.effects.borderColor
             effects.borderSize = rule.effects.borderSize
+            effects.rounding = rule.effects.rounding
             effects.minSize = rule.effects.minSize
             if rule.dynamic { effects.float = rule.effects.float }
             result.merge(effects)
