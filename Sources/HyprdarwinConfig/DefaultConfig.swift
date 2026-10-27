@@ -9,7 +9,7 @@ public enum DefaultConfig {
 --  Menu > Settings... shows the options, binds and rules in effect (read-only).
 --
 --  The API is a subset of Hyprland 0.56's Lua config (hl.*). Options macOS
---  cannot honour (blur, animations, rounding...) are accepted and ignored.
+--  cannot honour (blur, animations, opacity...) are accepted and ignored.
 --  See the README for the full list of supported calls.
 --
 --  hyprdarwinctl is hyprctl for hyprdarwin:
@@ -78,7 +78,7 @@ if hd then
     hd.config({
         hypr_key    = "caps_lock",    -- "caps_lock", "f18" (already remapped elsewhere) or "none"
         hide_corner = "bottom-right", -- where hidden workspaces' windows are parked
-        border_radius = 12,           -- corner radius of the borders, to match macOS windows
+        border_radius = 12,           -- border corners of apps with no built-in radius or rounding rule
         floating_on_top = true,       -- floating windows stay above the tiles of their workspace
         -- unmanaged_apps = { "com.mitchellh.ghostty" }, -- bundle ids hyprdarwin never moves
     })
@@ -198,6 +198,9 @@ hl.window_rule({ name = "float-pip", match = { title = "^Picture[- ]in[- ]Pictur
 -- Tiling gives windows at least the size their app accepts (hyprdarwin learns
 -- it the first time an app refuses to shrink); min_size asks for more:
 -- hl.window_rule({ match = { class = "^com\\.brave\\.Browser$" }, min_size = "800 500" })
+-- The border follows each app's corners: hyprdarwin knows common apps, and
+-- rounding sets the border's corner radius for any other (or overrides it):
+-- hl.window_rule({ match = { class = "^com\\.apple\\.TextEdit$" }, rounding = 18 })
 
 -----------------
 ---- AUTOSTART ---

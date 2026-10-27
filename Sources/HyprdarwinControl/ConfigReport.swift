@@ -180,6 +180,7 @@ public struct ConfigReport: Equatable, Sendable {
         for tag in effects.tags { parts.append("tag = \(string(tag))") }
         if let border = effects.borderColor { parts.append("border_color = \(string(color(border)))") }
         if let size = effects.borderSize { parts.append(size == 0 ? "no_border" : "border_size = \(size)") }
+        if let rounding = effects.rounding { parts.append("rounding = \(number(rounding))") }
         return parts
     }
 

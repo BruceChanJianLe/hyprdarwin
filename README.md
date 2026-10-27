@@ -218,7 +218,7 @@ Calls:
 | `hl.exec_cmd(cmd)` | Runs a shell command now (at load time: on every load) |
 | `hl.env(name, value)` | Exported to commands hyprdarwin runs |
 | `hl.dispatch(dispatcher)` | Runs an `hl.dsp.*` dispatcher, the same as calling it |
-| `hd.config(table)` | macOS only: `hypr_key` (`"caps_lock"`, `"f18"`, `"none"`), `hide_corner` (`"bottom-right"`, `"bottom-left"`), `unmanaged_apps` (bundle ids hyprdarwin never moves or focuses, e.g. `{ "com.mitchellh.ghostty" }`), `border_radius` (corner radius of the borders, default 12), `floating_on_top` (default `true`: floating windows stay above the tiles of their workspace, as in Hyprland; see Using it). `hd` is nil on Hyprland, so guard with `if hd then` |
+| `hd.config(table)` | macOS only: `hypr_key` (`"caps_lock"`, `"f18"`, `"none"`), `hide_corner` (`"bottom-right"`, `"bottom-left"`), `unmanaged_apps` (bundle ids hyprdarwin never moves or focuses, e.g. `{ "com.mitchellh.ghostty" }`), `border_radius` (corner radius of the borders of apps with no built-in value or `rounding` rule, default 12), `floating_on_top` (default `true`: floating windows stay above the tiles of their workspace, as in Hyprland; see Using it). `hd` is nil on Hyprland, so guard with `if hd then` |
 | `hl.monitor`, `hl.curve`, `hl.animation`, `hl.gesture`, `hl.device`, `hl.permission`, `hl.layer_rule` | Accepted and ignored |
 
 Calling a dispatcher (or passing it to `hl.dispatch`) runs it: `hl.dsp.focus({ workspace = 2 })()` inside a bound function, or at the top level of the config (it then runs after each load). A bound function can run several in order, like Hyprland's SUPER + Tab example (the default config binds it to HYPR + TAB):
@@ -292,8 +292,9 @@ hl.window_rule({
 
 - **Match fields** (all listed fields must match; regexes are unanchored ICU, `negative:` inverts): `class` (bundle id), `title`, `initial_class`, `initial_title`, `app_name`, `role`, `subrole` (`AXStandardWindow`, `AXDialog`, ...), `tag`, `float`, `fullscreen`, `workspace`.
 - **Effects** (applied when the window opens; later rules win per effect): `float`, `tile`, `workspace = "N"` or `"N silent"`, `monitor`, `size`, `move`, `center`, `fullscreen`, `maximize`, `no_initial_focus`, `tag`. `size`/`move` take two expressions using numbers, `+ - * / ( )`, `%` of the monitor, and `monitor_w`, `monitor_h`, `window_w`, `window_h`, `cursor_x`, `cursor_y`.
-- **Dynamic**: `border_color`, `border_size`, `no_border` and `min_size` re-apply when the title changes and on every reload; `dynamic = true` makes `float`/`tile` re-apply too.
-- Effects macOS cannot honour (`opacity`, `rounding`, `no_blur`, `animation`, ...) are accepted with a note. Rules that can never match on macOS (`xwayland = true`) are skipped.
+- **Dynamic**: `border_color`, `border_size`, `no_border`, `rounding` and `min_size` re-apply when the title changes and on every reload; `dynamic = true` makes `float`/`tile` re-apply too.
+- **Border corners**: `rounding = N` sets the corner radius (points) of the window's border. macOS 26 rounds windows by style and has no API to read another app's radius, so hyprdarwin ships measured values for the standard windows of common apps (`AppRounding.swift`: Apple toolbar and sidebar apps 28, Chromium browsers 22, Electron apps and terminals 18, Ghostty 21); a `rounding` rule wins over them and `hd.config` `border_radius` covers every other app. An app whose border still looks off takes one rule line: `hl.window_rule({ match = { class = "^com\\.apple\\.TextEdit$" }, rounding = 18 })`.
+- Effects macOS cannot honour (`opacity`, `rounding_power`, `no_blur`, `animation`, ...) are accepted with a note. Rules that can never match on macOS (`xwayland = true`) are skipped.
 
 Windows the app does not allow to be resized always float.
 

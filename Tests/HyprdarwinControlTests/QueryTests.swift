@@ -191,7 +191,7 @@ private func decode<T: Decodable>(_ type: T.Type, _ text: String) throws -> T {
             hl.env("EDITOR", "nvim")
             hd.config({ unmanaged_apps = { "com.b", "com.a" } })
             hl.window_rule({ name = "pip", match = { class = "^com\\\\.apple\\\\.Safari$", title = "^PiP$" },
-                float = true, size = "480 270", workspace = "3 silent", border_color = "rgb(ff0000)", no_border = true })
+                float = true, size = "480 270", workspace = "3 silent", border_color = "rgb(ff0000)", no_border = true, rounding = 17.5 })
             hl.window_rule({ match = { float = true }, tile = true, dynamic = true })
             hl.workspace_rule({ workspace = "2", monitor = "DELL", default = true, gaps_in = 0 })
             """).config)
@@ -199,7 +199,7 @@ private func decode<T: Decodable>(_ type: T.Type, _ text: String) throws -> T {
         #expect(report.windowRules.count == 2)
         #expect(report.windowRules[0].name == "pip")
         #expect(report.windowRules[0].match == ["class = \"^com\\\\.apple\\\\.Safari$\"", "title = \"^PiP$\""])
-        #expect(report.windowRules[0].effects == ["float", "workspace = \"3 silent\"", "size = \"480 270\"", "border_color = \"rgba(ff0000ff)\"", "no_border"])
+        #expect(report.windowRules[0].effects == ["float", "workspace = \"3 silent\"", "size = \"480 270\"", "border_color = \"rgba(ff0000ff)\"", "no_border", "rounding = 17.5"])
         #expect(report.windowRules[1].match == ["float = true"])
         #expect(report.windowRules[1].effects == ["tile"])
         #expect(report.windowRules[1].dynamic)

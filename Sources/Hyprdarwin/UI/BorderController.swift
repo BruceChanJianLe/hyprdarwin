@@ -37,7 +37,7 @@ final class BorderController {
             let width = CGFloat(size)
             let rect = NSRect(x: frame.minX - width, y: primaryHeight - frame.maxY - width,
                               width: frame.width + 2 * width, height: frame.height + 2 * width)
-            panel.ring.configure(colors: colors, width: width, radius: CGFloat(config.borderRadius))
+            panel.ring.configure(colors: colors, width: width, radius: CGFloat(config.borderRadius(for: window)))
             if panel.frame != rect { panel.setFrame(rect, display: true) }
             // directly above its own window, below anything stacked above it
             panel.order(.above, relativeTo: Int(id))

@@ -390,6 +390,7 @@ public final class WindowManager {
         window.tags.formUnion(effects.tags)
         window.borderColor = effects.borderColor
         window.borderSize = effects.borderSize
+        window.rounding = effects.rounding
         window.learnedMinSize = appMinimumSizes[info.bundleID] ?? .zero
         windowSequence += 1
         window.sequence = windowSequence
@@ -598,6 +599,7 @@ public final class WindowManager {
         let effects = RuleEngine.dynamicEffects(for: window, rules: config.windowRules)
         window.borderColor = effects.borderColor
         window.borderSize = effects.borderSize
+        window.rounding = effects.rounding
         // a tiling constraint: a rule added to the config applies to open windows too
         if let monitor = workspaces[window.workspace].flatMap({ self.monitor(id: $0.monitorID) }) {
             window.ruleMinSize = ruleMinimumSize(effects.minSize, for: window, on: monitor)

@@ -59,6 +59,7 @@ public struct ManagedWindow: Equatable, Sendable {
     /// Dynamic rule results, kept for the border overlay.
     public var borderColor: BorderColor?
     public var borderSize: Int?
+    public var rounding: Double?
     /// A min_size window rule.
     public var ruleMinSize: CGSize?
     /// The smallest size the app was seen to accept (it refused anything

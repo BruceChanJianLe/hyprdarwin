@@ -149,6 +149,12 @@ public struct Config: Sendable {
 
     public init() {}
 
+    /// The border's corner radius for `window`: its `rounding` rule, else the
+    /// built-in value for its app, else `border_radius`.
+    public func borderRadius(for window: ManagedWindow) -> Double {
+        window.rounding ?? AppRounding.radius(for: window) ?? borderRadius
+    }
+
     /// All rules for `id` merged in order (later fields win), or nil.
     public func workspaceRule(for id: WorkspaceID) -> WorkspaceRule? {
         var merged: WorkspaceRule?
