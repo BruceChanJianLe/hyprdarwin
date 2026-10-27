@@ -112,7 +112,7 @@ private final class RingView: NSView {
         mask.frame = bounds
         if let (_, width, radius) = current {
             let path = CGMutablePath()
-            path.addRoundedRect(in: bounds, cornerWidth: radius + width, cornerHeight: radius + width)
+            path.addRoundedRect(in: bounds, cornerWidth: min(radius + width, bounds.width / 2), cornerHeight: min(radius + width, bounds.height / 2))
             let inner = bounds.insetBy(dx: width, dy: width)
             path.addRoundedRect(in: inner, cornerWidth: min(radius, inner.width / 2), cornerHeight: min(radius, inner.height / 2))
             mask.path = path

@@ -208,7 +208,7 @@ struct ConfigBuilder {
                 }
                 config.hyprKey = mode
             case "border_radius":
-                guard let radius = value.double, radius >= 0 else {
+                guard let radius = value.double, radius >= 0, radius.isFinite else {
                     throw ConfigError("\(location) hd.config border_radius: expected a number >= 0")
                 }
                 config.borderRadius = radius
@@ -355,7 +355,7 @@ struct ConfigBuilder {
                 effects.borderSize = size
             case "no_border": if try flag() { effects.borderSize = 0 }
             case "rounding":
-                guard let radius = value.double, radius >= 0 else { throw fail("rounding must be a number >= 0") }
+                guard let radius = value.double, radius >= 0, radius.isFinite else { throw fail("rounding must be a number >= 0") }
                 effects.rounding = radius
             case "tag":
                 let raw = try text()

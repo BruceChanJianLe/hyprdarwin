@@ -413,6 +413,8 @@ private func infos(_ result: ConfigLoadResult) -> [String] {
         #expect(load("hl.window_rule({ match = { class = \"a\" }, workspace = \"three\" })").config == nil)
         #expect(load("hl.window_rule({ match = { class = \"a\" }, move = \"10\" })").config == nil)
         #expect(load("hl.window_rule({ match = { class = \"a\" }, rounding = -1 })").errors.first?.text.contains("rounding must be a number >= 0") == true)
+        #expect(load("hl.window_rule({ match = { class = \"a\" }, rounding = math.huge })").errors.first?.text.contains("rounding must be a number >= 0") == true)
+        #expect(load("hd.config({ border_radius = math.huge })").errors.first?.text.contains("border_radius: expected a number >= 0") == true)
         #expect(load("hl.window_rule({ match = { class = \"a\" }, rounding = \"big\" })").config == nil)
         let unknown = load("hl.window_rule({ match = { class = \"a\" }, frobnicate = true })")
         #expect(warnings(unknown).contains { $0.contains("unknown effect \"frobnicate\"") })
