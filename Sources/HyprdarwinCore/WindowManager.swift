@@ -793,11 +793,15 @@ public final class WindowManager {
         tiledFrames(for: id).frames
     }
 
-    /// The tiled windows of `id` with their frames (gaps applied), and the
-    /// newest windows that do not fit at their minimum sizes, which float
-    /// instead, one at a time, until the rest fit.
-    func tiledFrames(for id: WorkspaceID) -> (frames: [WindowID: CGRect], overflow: [WindowID]) {
-        guard var layout = workspaces[id]?.layout, let area = tilingArea(for: id) else { return ([:], []) }
+    /// The tiled windows of `id` with their frames (gaps applied), the newest
+    /// windows that do not fit at their minimum sizes, which float instead,
+    /// and the layout that arranged the rest. When the workspace's layout
+    /// cannot give every window its minimum, the first of `fitFallbacks`
+    /// that can takes over, built from the same window order, until there is
+    /// room for the workspace's own again. Only when none fits do the newest
+    /// windows float, one at a time, until a layout fits the rest.
+    func tiledFrames(for id: WorkspaceID) -> (frames: [WindowID: CGRect], overflow: [WindowID], layout: LayoutKind?) {
+        guard var layout = workspaces[id]?.layout, let area = tilingArea(for: id) else { return ([:], [], nil) }
         // windows on another macOS Space keep their slot, but the rest share the room
         for window in layout.windows where windows[window]?.isAway == true { layout.remove(window) }
         let gaps = gapsIn(for: id)
@@ -816,19 +820,48 @@ public final class WindowManager {
                                           height: max(size.height, min(area.height, Self.smallestTile.height)))
             }
         }
-        var overflow: [WindowID] = []
-        func fits() -> Bool {
-            let needed = layout.minimumSize(in: area, options: config.layoutOptions, minimums: minimums)
+        func fits(_ candidate: WorkspaceLayout) -> Bool {
+            let needed = candidate.minimumSize(in: area, options: config.layoutOptions, minimums: minimums)
             return needed.width <= area.width + 0.5 && needed.height <= area.height + 0.5
         }
-        while !minimums.isEmpty, layout.windows.count > 1, !fits() {
-            let newest = layout.windows.max { (windows[$0]?.sequence ?? 0, $0) < (windows[$1]?.sequence ?? 0, $1) }!
-            layout.remove(newest)
-            minimums[newest] = nil
-            overflow.append(newest)
+        func fitting() -> WorkspaceLayout? {
+            if fits(layout) { return layout }
+            for kind in Self.fitFallbacks where !layout.isKind(kind) {
+                let candidate = WorkspaceLayout.build(kind: kind, windows: layout.windows, area: area, options: config.layoutOptions)
+                if fits(candidate) { return candidate }
+            }
+            return nil
         }
-        let raw = layout.frames(in: area, options: config.layoutOptions, minimums: minimums)
-        return (Gaps.apply(raw, area: area, gapsIn: gaps), overflow)
+        var arranged = layout
+        var overflow: [WindowID] = []
+        if !minimums.isEmpty {
+            while true {
+                if let found = fitting() {
+                    arranged = found
+                    break
+                }
+                guard layout.windows.count > 1 else { break }
+                let newest = layout.windows.max { (windows[$0]?.sequence ?? 0, $0) < (windows[$1]?.sequence ?? 0, $1) }!
+                layout.remove(newest)
+                minimums[newest] = nil
+                overflow.append(newest)
+                arranged = layout
+            }
+        }
+        let raw = arranged.frames(in: area, options: config.layoutOptions, minimums: minimums)
+        return (Gaps.apply(raw, area: area, gapsIn: gaps), overflow, arranged.kind)
+    }
+
+    /// The layouts tried, in order, when a workspace's own layout cannot give
+    /// every window its minimum size: tmux's evenly tiled grid first (it
+    /// usually fits), then side by side, stacked, and a main pane on the left
+    /// or on top (the mirrored ones need the same room).
+    static let fitFallbacks: [LayoutKind] = [.tiled, .evenHorizontal, .evenVertical, .mainVertical, .mainHorizontal]
+
+    /// The layout `id` is arranged in right now: its own, or the fallback
+    /// that fits its windows' minimum sizes.
+    public func effectiveLayout(for id: WorkspaceID) -> LayoutKind? {
+        tiledFrames(for: id).layout
     }
 
     /// The least a tile gets when other windows' minimums squeeze it.
@@ -843,6 +876,9 @@ public final class WindowManager {
             guard let area = tilingArea(for: id) else { continue }
             let result = tiledFrames(for: id)
             tiled.merge(result.frames) { a, _ in a }
+            if let kind = result.layout, let own = workspaces[id]?.layout, !own.isKind(kind) {
+                plan.fallbackLayouts[id] = kind
+            }
             // the ones that do not fit float centred on top, newest last, a little apart
             for (index, window) in result.overflow.reversed().enumerated() {
                 guard let managed = windows[window] else { continue }
