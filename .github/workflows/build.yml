@@ -45,6 +45,12 @@ jobs:
           # offline audit and style of the template, rendered with a dummy
           # checksum into a throwaway local tap
           brew tap-new --no-git hyprdarwin/ci
+          # since Homebrew 7.0.11 only install/reinstall/upgrade trust a
+          # fully qualified cask implicitly, so audit needs the tap trusted;
+          # a Homebrew without `brew trust` loads any tap
+          if brew help trust >/dev/null 2>&1; then
+            brew trust --tap hyprdarwin/ci
+          fi
           tap=$(brew --repository hyprdarwin/ci)
           mkdir -p "$tap/Casks"
           scripts/render-cask.sh "$(tr -d '[:space:]' < VERSION)" "$(printf x | shasum -a 256 | cut -d' ' -f1)" \
