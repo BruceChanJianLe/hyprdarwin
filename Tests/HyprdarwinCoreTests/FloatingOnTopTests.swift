@@ -113,8 +113,8 @@ private func makeManager(_ configure: (inout Config) -> Void = { _ in }) -> Wind
     @Test func tilesTooBigToTileCountAsFloating() {
         let manager = makeManager()
         manager.addWindow(info(6), isNew: false)
-        _ = manager.windowRefusedSize(6, minimum: CGSize(width: 900, height: 0))
-        #expect(manager.computePlan().overflow == [6])
+        _ = manager.windowRefusedSize(6, minimum: CGSize(width: 900, height: 700))
+        #expect(manager.computePlan().overflow == [6], "no layout fits 900 x 700 next to two more tiles")
         #expect(manager.raiseFloating(over: 1) == [.raiseFloating(over: 1, [3, 4, 5, 6])])
         #expect(manager.raiseFloating(over: 6).isEmpty)
     }

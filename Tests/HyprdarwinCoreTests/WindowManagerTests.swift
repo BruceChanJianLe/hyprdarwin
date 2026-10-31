@@ -778,21 +778,78 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         manager.addWindow(info(4, bundle: "com.brave.Browser"), isNew: true)
         #expect(manager.windows[4]?.minimumSize == CGSize(width: 700, height: 0))
         plan = manager.computePlan()
-        #expect(plan.overflow == [4], "two 700-wide windows cannot share 1000: the newest floats")
-        #expect(plan.frame(of: 4) == CGRect(x: 150, y: 263, width: 700, height: 300), "centred on top, at its minimum width")
-        #expect(manager.window(at: CGPoint(x: 500, y: 400), plan: plan) == 4, "it sits above the tiles")
-        #expect(manager.workspaces[.numbered(1)]?.layout.windows.contains(4) == true, "still tiled in the model")
+        #expect(plan.overflow.isEmpty, "two 700-wide windows cannot share 1000 side by side, but stacked they fit")
+        #expect(manager.effectiveLayout(for: .numbered(1)) == .evenVertical)
+        #expect(plan.fallbackLayouts == [.numbered(1): .evenVertical])
+        #expect(plan.frame(of: 4)?.width == 1000)
 
-        // room again: it drops back into its tile
+        // room again: back to dwindle
         manager.removeWindow(3)
         plan = manager.computePlan()
         #expect(plan.overflow.isEmpty)
+        #expect(plan.fallbackLayouts.isEmpty)
         #expect(plan.frame(of: 4)?.width == 700)
 
         // re-tile measures again
         manager.dispatch(.retile)
         #expect(manager.windows[4]?.minimumSize == .zero)
         #expect(manager.appMinimumSizes.isEmpty)
+    }
+
+    /// WhatsApp's main window and three chat windows: their minimums cannot
+    /// fit dwindle, which used to float the newest one, and it went back to
+    /// its tile on every re-tile or drop only to float again.
+    @Test func minimumsThatDoNotFitTheLayoutFallBackToTiled() {
+        let manager = makeManager()
+        let whatsapp = "net.whatsapp.WhatsApp"
+        for id: WindowID in 1...4 { manager.addWindow(info(id, bundle: whatsapp), isNew: true) }
+        func learn() {
+            manager.windowRefusedSize(1, minimum: CGSize(width: 600, height: 450))
+            for id: WindowID in 2...4 { manager.windowRefusedSize(id, minimum: CGSize(width: 380, height: 300)) }
+        }
+        learn()
+        // dwindle is 1 | (2 / (3 | 4)): 600 + 380 + 380 wide; tmux's tiled 2 x 2 needs 980 x 750
+        var plan = manager.computePlan()
+        #expect(plan.overflow.isEmpty, "every window tiles")
+        #expect(plan.frame(of: 1) == CGRect(x: 0, y: 25, width: 600, height: 450))
+        #expect(plan.frame(of: 2) == CGRect(x: 600, y: 25, width: 400, height: 450))
+        #expect(plan.frame(of: 3) == CGRect(x: 0, y: 475, width: 500, height: 325))
+        #expect(plan.frame(of: 4) == CGRect(x: 500, y: 475, width: 500, height: 325))
+        #expect(manager.workspaces[.numbered(1)]?.layout.kind == .dwindle, "the workspace keeps its own layout")
+        #expect(manager.effectiveLayout(for: .numbered(1)) == .tiled)
+
+        // dropping a tile on another, or re-tiling and learning again, lands on the same plan
+        manager.swapWindows(4, 1)
+        manager.swapWindows(4, 1)
+        #expect(manager.computePlan() == plan)
+        manager.dispatch(.retile)
+        learn()
+        #expect(manager.computePlan() == plan)
+
+        // room for dwindle again: back to it
+        manager.removeWindow(4)
+        plan = manager.computePlan()
+        #expect(plan.overflow.isEmpty)
+        #expect(manager.effectiveLayout(for: .numbered(1)) == .dwindle)
+        #expect(plan.frame(of: 1) == CGRect(x: 0, y: 25, width: 600, height: 775))
+    }
+
+    @Test func whenNoLayoutFitsTheFewestNewestWindowsFloat() {
+        let manager = makeManager()
+        for id: WindowID in 1...4 {
+            manager.addWindow(info(id), isNew: true)
+            manager.windowRefusedSize(id, minimum: CGSize(width: 600, height: 500))
+        }
+        // no two of them fit side by side or stacked in 1000 x 775
+        let plan = manager.computePlan()
+        #expect(plan.overflow == [2, 3, 4])
+        #expect(plan.frame(of: 1) == primary.visibleFrame)
+        #expect(manager.effectiveLayout(for: .numbered(1)) == .dwindle, "nothing fits better: the workspace's own layout")
+        #expect(plan.fallbackLayouts.isEmpty)
+        #expect(plan.frame(of: 4)?.size == CGSize(width: 600, height: 500), "centred on top, at its minimum size")
+        #expect(manager.window(at: CGPoint(x: 500, y: 400), plan: plan) == 4, "the newest sits above the tiles")
+        #expect(manager.workspaces[.numbered(1)]?.layout.windows == [1, 2, 3, 4], "still tiled in the model")
+        for _ in 0..<3 { #expect(manager.computePlan() == plan, "stable") }
     }
 
     @Test func aRefusalCountsOnlyWhileThePlanStillAsksForThatSize() {
@@ -818,9 +875,9 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         let manager = makeManager()
         manager.addWindow(info(1), isNew: true)
         manager.addWindow(info(2), isNew: true)
-        manager.windowRefusedSize(2, minimum: CGSize(width: 990, height: 0))
+        manager.windowRefusedSize(2, minimum: CGSize(width: 990, height: 700))
         let plan = manager.computePlan()
-        #expect(plan.overflow == [2], "990 + the 120 floor do not fit 1000")
+        #expect(plan.overflow == [2], "990 + the 120 floor do not fit 1000 wide, nor 700 + the 80 floor 775 tall")
         #expect(plan.frame(of: 1)?.width == 1000)
     }
 
@@ -837,8 +894,9 @@ private func rule(_ build: (inout WindowRuleMatch, inout WindowRuleEffects) thro
         var reported = info(1)
         reported.minSize = CGSize(width: 450, height: 0)
         manager.updateInfo(reported)
-        #expect(manager.computePlan().frame(of: 1)?.width == 1000, "450 + 600 cannot share 1000: 1 tiles alone")
-        #expect(manager.computePlan().overflow == [2], "450 + 600 > 1000: the newest floats")
+        #expect(manager.computePlan().overflow.isEmpty)
+        #expect(manager.computePlan().frame(of: 1)?.width == 1000, "450 + 600 cannot share 1000 side by side: they stack")
+        #expect(manager.effectiveLayout(for: .numbered(1)) == .tiled)
 
         // a min_size rule added by a reload applies to windows already open
         var config = manager.config

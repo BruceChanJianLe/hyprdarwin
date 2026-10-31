@@ -119,6 +119,9 @@ public struct Plan: Equatable, Sendable {
     /// Tiled windows whose minimum size does not fit their workspace: they
     /// float on top, centred, until there is room for them again.
     public var overflow: Set<WindowID> = []
+    /// Shown workspaces whose own layout cannot fit their windows' minimum
+    /// sizes, with the layout that arranges them instead.
+    public var fallbackLayouts: [WorkspaceID: LayoutKind] = [:]
 
     public init() {}
 

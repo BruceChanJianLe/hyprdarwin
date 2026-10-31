@@ -621,7 +621,9 @@ final class AppController {
 
     private func refresh() {
         guard managing else { return }
+        let previous = lastPlan
         lastPlan = model.computePlan()
+        logFallbackLayouts(from: previous.fallbackLayouts, to: lastPlan.fallbackLayouts)
         if !paused { applier.apply(lastPlan, model: model) }
         updateBorders()
         var lines: [String] = []
@@ -646,6 +648,17 @@ final class AppController {
         }
         ipc.publish(lines)
         updateMenu()
+    }
+
+    private func logFallbackLayouts(from old: [WorkspaceID: LayoutKind], to new: [WorkspaceID: LayoutKind]) {
+        for id in Set(old.keys).union(new.keys).sorted() where old[id] != new[id] {
+            let own = model.workspaces[id]?.layout.kind.rawValue ?? "its layout"
+            if let kind = new[id] {
+                Log.info("workspace \(id): its windows do not fit \(own) at their minimum sizes; arranging them \(kind.rawValue)")
+            } else if model.workspaces[id] != nil, model.isVisible(id) {
+                Log.info("workspace \(id): back to \(own)")
+            }
+        }
     }
 
     /// The focused window gets the active border only while it really has
@@ -742,7 +755,7 @@ final class AppController {
             lines.append("  monitor \(monitor.id) \"\(monitor.name)\" \(FrameApplier.describe(monitor.frame)) workspace \(state?.activeWorkspace.description ?? "-")\(state?.special.map { " special:\($0)" } ?? "")\(monitor.id == model.focusedMonitorID ? " (focused)" : "")")
         }
         for workspace in model.workspaces.values.sorted(by: { $0.id < $1.id }) {
-            lines.append("  workspace \(workspace.id) on \(workspace.monitorID) layout \(workspace.layout.kind.rawValue) tiled \(workspace.layout.windows)\(model.isVisible(workspace.id) ? " (visible)" : "")")
+            lines.append("  workspace \(workspace.id) on \(workspace.monitorID) layout \(workspace.layout.kind.rawValue)\(model.effectiveLayout(for: workspace.id).flatMap { workspace.layout.isKind($0) ? nil : " (arranged \($0.rawValue): minimums do not fit)" } ?? "") tiled \(workspace.layout.windows)\(model.isVisible(workspace.id) ? " (visible)" : "")")
             if !model.isVisible(workspace.id) {
                 for (id, frame) in model.layoutPreview(for: workspace.id).sorted(by: { $0.key < $1.key }) {
                     lines.append("    if shown: window \(id) at \(FrameApplier.describe(frame))")
